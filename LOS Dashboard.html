@@ -112,11 +112,46 @@ const C = {
 
 // â”€â”€â”€ CSV PARSING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const COL = {
+// Hardcoded fallback column indices (used if no header row is detected)
+const COL_DEFAULTS = {
   WELL_NAME: 0, COST_CATEGORY: 1, NRI: 3, WI: 4,
   GROSS_AMOUNT: 5, GROSS_VOLUME: 6, JP_RP: 8,
   SERVICE_END_DATE: 11, PROPERTY_NUM: 12, PROPERTY_NAME: 13,
   OP_OBO: 15, LOS_CATEGORY: 16, NET_VOLUME: 20, NET_AMOUNT: 21,
+}
+// Kept for legacy references; actual parsing uses dynamic col map built per-file
+const COL = COL_DEFAULTS
+
+function buildColMap(headerRow) {
+  const col = { ...COL_DEFAULTS }
+  const h = headerRow.map(v => (v || '').toString().trim().toLowerCase())
+
+  const exact = {
+    'well name':        'WELL_NAME',
+    'cost category':    'COST_CATEGORY',
+    'nri':              'NRI',
+    'wi':               'WI',
+    'gross amount':     'GROSS_AMOUNT',
+    'gross volume':     'GROSS_VOLUME',
+    'service end date': 'SERVICE_END_DATE',
+    'property #':       'PROPERTY_NUM',
+    'property name':    'PROPERTY_NAME',
+    'op/obo':           'OP_OBO',
+    'los category':     'LOS_CATEGORY',
+    'net volume':       'NET_VOLUME',
+  }
+  h.forEach((name, i) => {
+    if (exact[name] !== undefined) col[exact[name]] = i
+  })
+  // JP/RP: first occurrence
+  const jpIdx = h.indexOf('jp/rp')
+  if (jpIdx !== -1) col.JP_RP = jpIdx
+  // Net Amount: last occurrence (col 7 is gross net amount, col 21 is the real net)
+  let lastNA = -1
+  h.forEach((name, i) => { if (name === 'net amount') lastNA = i })
+  if (lastNA !== -1) col.NET_AMOUNT = lastNA
+
+  return col
 }
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -165,42 +200,58 @@ function parseCSVText(text) {
   if (!result.data || !result.data.length) throw new Error('CSV appears empty or could not be parsed.')
 
   const rows = result.data
+  // Detect header row and build a dynamic column map from it
   let start = 0
-  const fc = (rows[0][COL.WELL_NAME] || '').toString().toLowerCase().trim()
-  if (fc === 'well name' || fc === 'well' || fc === 'wellname') start = 1
+  const fc = (rows[0][0] || '').toString().toLowerCase().trim()
+  const hasHeader = fc === 'well name' || fc === 'well' || fc === 'wellname'
+  if (hasHeader) start = 1
+  const col = hasHeader ? buildColMap(rows[0]) : COL_DEFAULTS
 
+  const minCols = Math.max(col.WELL_NAME, col.SERVICE_END_DATE, col.LOS_CATEGORY, col.NET_AMOUNT) + 1
   const sample = rows[start]
-  if (!sample || sample.length < 17) {
-    throw new Error(`Expected 17+ columns; found ${sample ? sample.length : 0}. Detected delimiter: "${delimiter === '\t' ? 'tab' : 'comma'}". Check that the file has 22 columns.`)
+  if (!sample || sample.length < minCols) {
+    throw new Error(
+      `Expected ${minCols}+ columns; found ${sample ? sample.length : 0}. ` +
+      `Delimiter detected: "${delimiter === '\t' ? 'tab' : 'comma'}". ` +
+      `Header ${hasHeader ? 'detected' : 'NOT detected'}.`
+    )
   }
 
   const parsed = []
-  let skipped = 0
+  let skippedShort = 0, skippedNoName = 0, skippedBadDate = 0
   for (let i = start; i < rows.length; i++) {
     const r = rows[i]
-    if (!r || r.length < 17) { skipped++; continue }
-    const wellName = (r[COL.WELL_NAME] || '').toString().trim()
-    if (!wellName) { skipped++; continue }
-    const date = parseDate(r[COL.SERVICE_END_DATE])
-    if (!date) { skipped++; continue }
-    const los = (r[COL.LOS_CATEGORY] || '').toString().trim()
-    const cat = (r[COL.COST_CATEGORY] || '').toString().trim()
+    if (!r || r.length < minCols) { skippedShort++; continue }
+    const wellName = (r[col.WELL_NAME] || '').toString().trim()
+    if (!wellName) { skippedNoName++; continue }
+    const date = parseDate(r[col.SERVICE_END_DATE])
+    if (!date) { skippedBadDate++; continue }
+    const los = (r[col.LOS_CATEGORY] || '').toString().trim()
+    const cat = (r[col.COST_CATEGORY] || '').toString().trim()
     parsed.push({
       wellName, cat,
-      nri: parseNum(r[COL.NRI]), wi: parseNum(r[COL.WI]),
-      grossAmount: parseNum(r[COL.GROSS_AMOUNT]),
-      grossVolume: parseNum(r[COL.GROSS_VOLUME]),
-      jpRp: (r[COL.JP_RP] || '').toString().trim(),
+      nri: parseNum(r[col.NRI]), wi: parseNum(r[col.WI]),
+      grossAmount: parseNum(r[col.GROSS_AMOUNT]),
+      grossVolume: parseNum(r[col.GROSS_VOLUME]),
+      jpRp: (r[col.JP_RP] || '').toString().trim(),
       date, monthKey: monthKey(date), monthDisp: monthDisp(date),
-      propertyNum: (r[COL.PROPERTY_NUM] || '').toString().trim(),
-      opObo: (r[COL.OP_OBO] || '').toString().trim(),
+      propertyNum: (r[col.PROPERTY_NUM] || '').toString().trim(),
+      opObo: (r[col.OP_OBO] || '').toString().trim(),
       los, bucket: resolveBucket(los, cat),
-      netVolume: parseNum(r[COL.NET_VOLUME]),
-      netAmount: parseNum(r[COL.NET_AMOUNT]),
+      netVolume: parseNum(r[col.NET_VOLUME]),
+      netAmount: parseNum(r[col.NET_AMOUNT]),
     })
   }
 
-  if (!parsed.length) throw new Error(`No valid rows found (${skipped} skipped). Check Service End Date format (M/DD/YY) and Well Name column.`)
+  if (!parsed.length) {
+    const firstDataRow = rows[start] || []
+    const sampleName = (firstDataRow[col.WELL_NAME] || '').toString().trim()
+    const sampleDate = (firstDataRow[col.SERVICE_END_DATE] || '').toString().trim()
+    throw new Error(
+      `No valid rows found — ${skippedShort} short (<${minCols} cols), ${skippedNoName} no well name, ${skippedBadDate} bad date. ` +
+      `First data row: ${firstDataRow.length} cols | well[${col.WELL_NAME}]="${sampleName}" | date[${col.SERVICE_END_DATE}]="${sampleDate}" | delim="${delimiter === '\t' ? 'TAB' : 'COMMA'}"`
+    )
+  }
   return parsed
 }
 
