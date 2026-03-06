@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -20,6 +20,8 @@
     onerror="window.__missing.push('React')"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
     onerror="window.__missing.push('ReactDOM')"></script>
+  <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"
+    onerror="window.__missing.push('PropTypes')"></script>
   <!-- Recharts: inlined UMD build (avoids CDN and file:// restrictions) -->
   <script>
 /*! For license information please see Recharts.js.LICENSE.txt */
@@ -53,10 +55,11 @@
 // â”€â”€â”€ DEPENDENCY GUARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 ;(function() {
   const missing = (window.__missing || []).slice()
-  if (typeof React    === 'undefined') missing.push('React')
-  if (typeof ReactDOM === 'undefined') missing.push('ReactDOM')
-  if (typeof Recharts === 'undefined') missing.push('Recharts')
-  if (typeof Papa     === 'undefined') missing.push('PapaParse')
+  if (typeof React     === 'undefined') missing.push('React')
+  if (typeof ReactDOM  === 'undefined') missing.push('ReactDOM')
+  if (typeof PropTypes === 'undefined') missing.push('PropTypes')
+  if (typeof Recharts  === 'undefined') missing.push('Recharts')
+  if (typeof Papa      === 'undefined') missing.push('PapaParse')
   if (!missing.length) return
   document.getElementById('root').innerHTML =
     `<div style="display:flex;align-items:center;justify-content:center;height:100vh">
