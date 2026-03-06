@@ -37,15 +37,18 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 
 ### Working
 - [x] 3-tab layout (ARIES Inputs, Portfolio Rollup, Well by Well)
-- [x] CSV parsing — tab-delimited, 22-column LOS format
+- [x] CSV parsing — tab- or comma-delimited, dynamic column detection from header
 - [x] Data aggregations — monthly rollup + per-well monthly series
-- [x] 13 portfolio rollup charts with mini data tables
+- [x] Sign flip: oil/gas/NGL revenue + volume stored negative in source, flipped via Math.abs()
+- [x] 13 portfolio rollup charts — all BarCharts, titles with units, IB pitchbook style
 - [x] ARIES input form (VDR Case / My Case / Variance / Historical Avg)
-- [x] ARIES overlay reference lines on charts (gold dashed = My Case, slate dotted = VDR)
-- [x] Well-by-well cards with 11 chart type options and search/filter
+- [x] ARIES overlay reference lines on rollup charts (orange dashed = My Case, gray dotted = VDR)
+- [x] Well-by-well cards with 11 chart type options, search/filter, and sort (oil/gas/total vol)
+- [x] % of Total shown in each well card footer (contribution to portfolio for most recent month)
 - [x] Export to CSV (ARIES inputs + full historical data)
 - [x] BOM stripping for Excel-exported CSVs
 - [x] Dependency guard with helpful error messages if CDN scripts fail
+- [x] Light mode UI — white bg, dark text, Evercore IB color palette, no dark colors
 
 ### Known Issues
 
@@ -155,30 +158,32 @@ netOild = oil_vol / daysInMonth(date)
 
 ---
 
-## Design System
+## Design System (Updated Session 6 — Light Mode IB Pitchbook Style)
 
 ```
-Background:      #0f1117
-Card background: #1a1d27
-Border:          #2a2d3a
-Text primary:    #f0f0f0
-Text secondary:  #8b8fa8
-Text muted:      #4a4d5a
+Background:      #f9fafb (gray-50)
+Card background: #ffffff
+Border:          #e5e7eb (gray-200)
+Text primary:    #111827 (gray-900)
+Text secondary:  #6b7280 (gray-500)
+Text muted:      #9ca3af (gray-400)
 
-Chart colors:
-  Oil:           #4e9af1  (steel blue)
-  Gas:           #f59e0b  (amber)
-  NGL:           #10b981  (emerald)
-  Fixed:         #6366f1  (indigo)
-  Var Oil:       #f97316  (orange)
-  Var Water:     #06b6d4  (cyan)
-  Prod Taxes:    #a78bfa  (violet)
-  Revenue:       #34d399  (green)
-  Margin:        #f472b6  (pink)
-  Cost/BOE:      #e879f9  (fuchsia)
-  My Case:       #facc15  gold dashed line
-  VDR Case:      #94a3b8  slate dotted line
+Chart colors (Evercore IB palette):
+  Oil:           #1F3864  (dark navy)
+  Gas:           #C55A11  (burnt orange)
+  NGL:           #548235  (forest green)
+  Fixed:         #2E74B5  (medium blue)
+  Var Oil:       #5B9BD5  (steel blue)
+  Var Water:     #9DC3E6  (light blue)
+  Prod Taxes:    #BDD7EE  (pale blue)
+  Revenue:       #1F3864  (same as oil)
+  Margin:        #548235  (same as NGL)
+  Cost/BOE:      #C55A11  (same as gas)
+  My Case:       #C55A11  orange dashed reference line
+  VDR Case:      #7F7F7F  gray dotted reference line
 
+Grid:  #9CA3AF solid horizontal lines (no vertical)
+Tabs active: border-[#1F3864] text-[#1F3864]
 Font: Inter (Google Fonts)
 ```
 
@@ -281,7 +286,45 @@ If any script fails, a dependency guard at the top of the Babel script catches i
 
 ---
 
+## Discord Mobile Approval Hook
+
+Claude Code is configured to pause before any `Bash`, `Write`, or `Edit` call and ask for phone approval via Discord.
+
+**Files:**
+- `~/.claude/hooks/discord_approval.py` — hook script (Python, no external packages)
+- `~/.claude/hooks/SETUP.md` — full setup instructions
+- `~/.claude/settings.json` — hook wired into Claude Code via `PreToolUse` matcher
+
+**Flow:**
+1. Claude tries to run a tool → hook fires
+2. Discord message sent to `#claude-approvals` with full tool details
+3. Script polls every 3s for a 👍 (approve) or 👎 (deny) reaction
+4. 5-minute timeout → auto-approve (configurable)
+5. Read-only tools (Read, Glob, Grep) bypassed — no notification
+
+**Required env vars (Windows System Environment Variables):**
+```
+DISCORD_BOT_TOKEN   = your-discord-bot-token
+DISCORD_CHANNEL_ID  = your-channel-id
+```
+
+**Status:** Script written and wired. Needs Discord bot setup per `SETUP.md` before it's live.
+
+---
+
 ## Session Log (reverse chronological)
+
+**2026-03-06 — Session 6**
+- Full UI overhaul to light mode (white bg, black fonts, IB pitchbook style)
+- Applied Evercore IB color palette to all charts (navy oil, burnt orange gas, forest green NGL, etc.)
+- Fixed sign flip: oil/gas/NGL volumes and revenues were stored negative — all now use `Math.abs()` in `accum()`
+- Fixed all garbled Unicode in the HTML file (double-encoded UTF-8 chars like `â€"` for em dash) — replaced with clean ASCII
+- Converted all LineCharts to BarCharts in Portfolio Rollup and Well-by-Well tabs
+- Updated all chart titles to include units in parentheses (e.g., "Oil Volume (BBL/d)")
+- Added sort controls to Well-by-Well tab: sort by Oil Vol, Gas Vol, or Total Vol (BOE) for most recent month
+- Added "% of Total" column to each Well Card footer (contribution to total for most recent month using selected sort metric)
+- ARIES VDR/My Case reference lines already active in Portfolio Rollup (orange dashed = My Case, gray dotted = VDR)
+- Updated dynamic column detection notes in parsing (already implemented in Session 5)
 
 **2026-03-06 — Session 5**
 - User confirmed dashboard opens; new error when dropping CSV: "Expected 17+ tab-delimited columns; found 1"
