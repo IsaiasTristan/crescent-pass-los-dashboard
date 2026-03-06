@@ -183,6 +183,16 @@ Font: Inter (Google Fonts)
 
 ---
 
+## Repository
+
+**GitHub (private):** https://github.com/IsaiasTristan/crescent-pass-los-dashboard
+**Remote:** `origin` → HTTPS
+**Branch:** `main`
+
+Sensitive data files (raw LOS CSVs under `01. Analysis/` and `pe-los-dashboard/public/data/`) are excluded via `.gitignore`.
+
+---
+
 ## File Structure
 
 ```
@@ -270,6 +280,14 @@ If any script fails, a dependency guard at the top of the Babel script catches i
 ---
 
 ## Session Log (reverse chronological)
+
+**2026-03-06 — Session 3**
+- Initialized git repository in project root
+- Created `.gitignore` (excludes `node_modules/`, `dist/`, raw CSV data files under `01. Analysis/` and `pe-los-dashboard/public/data/`)
+- Made initial commit (20 files)
+- Created private GitHub repo: https://github.com/IsaiasTristan/crescent-pass-los-dashboard
+- Pushed to `main` branch via HTTPS
+- Updated CLAUDE.md with repository section
 
 **2026-03-05 — Session 2**
 - Confirmed Node.js is NOT installed (`node --version` / `npm --version` both return "command not found" in Cursor terminal)
