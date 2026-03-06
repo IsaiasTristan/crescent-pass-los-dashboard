@@ -6,7 +6,7 @@ This file is shared between Claude Code (CLI) and Claude in Cursor so both can w
 
 ## Project Overview
 
-A private-equity due diligence tool for analyzing well-by-well Lease Operating Statements (LOS) on a private E&P acquisition. The app ingests a tab-delimited CSV of LOS data, aggregates it, and produces investment-committee-quality charts with ARIES model assumption overlays.
+A private-equity due diligence tool for analyzing well-by-well Lease Operating Statements (LOS) on a private E&P acquisition. The app ingests a tab- or comma-delimited CSV of LOS data, aggregates it, and produces investment-committee-quality charts with ARIES model assumption overlays.
 
 **Primary user:** One PE professional doing internal DD. Not a public-facing app.
 
@@ -60,7 +60,8 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 | 1 | Node.js not installed | User must install Node.js LTS from [nodejs.org](https://nodejs.org), then restart Cursor, before the Vite project can be used |
 
 ### Recently Resolved
-- **Grey page / Recharts CDN failure** — Confirmed 2026-03-06: jsDelivr and unpkg both fail to load `recharts@2.12.7/umd/Recharts.js`. Fix: downloaded UMD file locally to `recharts.umd.js` (498KB, excluded from git). HTML now loads Recharts from local file with CDN fallback. `recharts.umd.js` must be present in the same folder as `LOS Dashboard.html`.
+- **Grey page / Recharts CDN failure** — Confirmed 2026-03-06: jsDelivr and unpkg both fail on this machine. Fix: entire Recharts 2.12.7 UMD build inlined directly into `LOS Dashboard.html` (no external file needed). Also added missing `prop-types` CDN script (Recharts UMD peer dep) before the inlined Recharts block.
+- **CSV comma-delimiter error** — Confirmed 2026-03-06: data file (`Gross and Net LOS_3.5.26.csv`) is comma-delimited, not tab-delimited. Fix: `parseCSVText()` now auto-detects delimiter by counting tabs vs commas in the first line. UI hint updated to "Tab or comma delimited."
 
 ---
 
@@ -73,7 +74,7 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 
 ## Data File Specification
 
-**Format:** Tab-delimited, 22 columns (0-indexed), one row per well × month × LOS category
+**Format:** Tab- or comma-delimited (auto-detected), 22 columns (0-indexed), one row per well × month × LOS category
 
 | Index | Column | Notes |
 |-------|--------|-------|
@@ -102,7 +103,7 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 - `Net Volume` on RevO/RevG/RevNGL rows = production volumes
 - `CAPEX` rows excluded from all LOS totals
 - Dataset: ~40 wells × 24 months ≈ 5,000–10,000 rows
-- Parser auto-detects and skips header row, strips Excel BOM (`\uFEFF`), normalizes CRLF
+- Parser auto-detects delimiter (tab vs comma by inspecting first line), skips header row, strips Excel BOM (`\uFEFF`), normalizes CRLF
 
 ---
 
@@ -270,22 +271,33 @@ C:\Coding Projects\01. Crescent Pass\
 2. PapaParse 5.4.1
 3. React 18 (unpkg)
 4. ReactDOM 18 (unpkg)
-5. Recharts 2.12.7 (jsdelivr, with unpkg fallback via onerror)
-6. Babel Standalone 7.24.0
-7. <script type="text/babel"> — all app code
+5. prop-types 15.8.1 (unpkg) — required peer dep for Recharts UMD
+6. Recharts 2.12.7 — INLINED directly in HTML (avoids CDN + file:// issues)
+7. Babel Standalone 7.24.0
+8. <script type="text/babel"> — all app code
 ```
 
-If any script fails, a dependency guard at the top of the Babel script catches it and shows a named error card instead of a silent grey page.
+If any script fails, a dependency guard at the top of the Babel script catches it and shows a named error card instead of a silent grey page. Recharts is inlined so it never makes a network request.
 
 ---
 
 ## Session Log (reverse chronological)
 
+**2026-03-06 — Session 5**
+- User confirmed dashboard opens; new error when dropping CSV: "Expected 17+ tab-delimited columns; found 1"
+- Root cause: data file (`Gross and Net LOS_3.5.26.csv`) is comma-delimited, not tab-delimited
+- Fix: `parseCSVText()` updated to auto-detect delimiter (tabs vs commas in first line); PapaParse now uses detected delimiter
+- UI hint text updated from "Tab-delimited" → "Tab or comma delimited"
+- Updated CLAUDE.md Data File Specification and Project Overview to reflect comma support
+- Pushed fixes to GitHub (`main`)
+- **Still pending:** Node.js install for Vite project
+
 **2026-03-06 — Session 4**
 - User confirmed grey page shows red error card: "Missing: Recharts"
-- Root cause: `recharts@2.12.7` UMD fails to load from both jsDelivr and unpkg on this machine
-- Fix: downloaded `recharts.umd.js` (498KB) locally; HTML now loads from local file with CDN as fallback
-- Added `recharts.umd.js` to `.gitignore` (vendor artifact, not committed)
+- Root cause 1: `recharts@2.12.7` UMD fails to load from both jsDelivr and unpkg on this machine
+- Root cause 2: Recharts UMD requires `prop-types` globally (`window.PropTypes`) — was not loaded
+- Fix: inlined entire Recharts 2.12.7 UMD build directly into `LOS Dashboard.html`; added `prop-types` CDN script before it; updated dependency guard to check `PropTypes`
+- Removed `recharts.umd.js` local file approach (no longer needed — Recharts is inlined)
 - Updated CLAUDE.md to reflect issue resolved; Recharts CDN failure is no longer an open item
 - **Still pending:** Node.js install for Vite project
 

@@ -154,7 +154,14 @@ function resolveBucket(los, cat) {
 function parseCSVText(text) {
   // Strip BOM (Excel adds \uFEFF to exported files) and normalize line endings
   text = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
-  const result = Papa.parse(text, { delimiter: '\t', header: false, skipEmptyLines: true })
+
+  // Auto-detect delimiter: check first line for tabs vs commas
+  const firstLine = text.split('\n')[0] || ''
+  const tabCount   = (firstLine.match(/\t/g)   || []).length
+  const commaCount = (firstLine.match(/,/g)     || []).length
+  const delimiter  = tabCount >= commaCount ? '\t' : ','
+
+  const result = Papa.parse(text, { delimiter, header: false, skipEmptyLines: true })
   if (!result.data || !result.data.length) throw new Error('CSV appears empty or could not be parsed.')
 
   const rows = result.data
@@ -164,7 +171,7 @@ function parseCSVText(text) {
 
   const sample = rows[start]
   if (!sample || sample.length < 17) {
-    throw new Error(`Expected 17+ tab-delimited columns; found ${sample ? sample.length : 0}. Check delimiter (must be tab, not comma).`)
+    throw new Error(`Expected 17+ columns; found ${sample ? sample.length : 0}. Detected delimiter: "${delimiter === '\t' ? 'tab' : 'comma'}". Check that the file has 22 columns.`)
   }
 
   const parsed = []
