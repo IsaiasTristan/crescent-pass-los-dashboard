@@ -103,6 +103,7 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 
 **Key parsing rules:**
 - Revenue rows (Oil, Gas, NGL) have **negative** Net Amount — flip sign with `Math.abs()` for display
+- **NGL volume is in gallons in the source data** — divide by 42 to convert to BBL before all calculations (1 BBL = 42 gallons). Applied in `accum()` for both net and gross NGL volume.
 - `Net Volume` on RevO/RevG/RevNGL rows = production volumes
 - `CAPEX` rows excluded from all LOS totals
 - Dataset: ~40 wells × 24 months ≈ 5,000–10,000 rows
@@ -313,6 +314,19 @@ DISCORD_CHANNEL_ID  = your-channel-id
 ---
 
 ## Session Log (reverse chronological)
+
+**2026-03-06 — Session 7**
+- **GAS BOE CONFIRMED**: `netBOE = oil_vol + ngl_vol + gas_vol/6` with `GAS_BOE = 6` constant. Added `netGasBOEd`, `grossGasBOEd`, `netGasBOE`, `grossGasBOE` to metrics() so stacked BOE charts correctly convert gas from MCF to BOE (was a unit mismatch bug: stacking MCF with BBL in previous sessions)
+- **MBoed convention**: New formatters `fMBd` (MBoed/MBpd), `fMMcfd` (MMcfd), `fMdol` ($M). All production now displayed in thousands, gas in MMcf, costs in $M.
+- **Bar chart labels**: Added `segLabel(fmt)` and `topLabel(fmt)` factory functions for Recharts `LabelList` content. Stacked bar charts now show: individual segment labels (white text inside each bar, hidden if bar < 14px) and total labels above each bar (dark text, 1 decimal).
+- **Well by Well Charts**: Completely new `WBW_TYPES` array (28 types, vs 11 before). Organized by groups: Total Production, Oil & NGL, Gas Production, Costs ($M), Realized Prices, Taxes. Each group has primary (daily rate) and secondary (monthly total) variants.
+- **WbwSelector**: New grouped chart type selector UI replaces the flat button list. Group labels + buttons organized by category.
+- **Sort dropdown**: Changed from toggle buttons to `<select>` dropdown with distinct navy border styling (clearly different from toggle buttons).
+- **Well by Well Tables**: `tableFmt` (number only, no unit) in cells; `tableLabel` as the column header showing metric name + unit; `WbwSelector` for metric selection; sort dropdown.
+- **Asset Rollup** (renamed from Portfolio Rollup): Restructured into 4 sections: Volumes, Total Cost ($M), Unit Cost ($/Boe), Other. Now has 17 charts (was 13). All stacked bars have segment + total labels. Gas correctly converted to BOE in stacked charts.
+- **Color palette update**: Dark navy (#1F3864) → medium blue (#2E74B5) → gray (#808080) → orange (#C55A11) → green (#548235) sequence. NGL changed from forest green to medium blue. Gas-in-BOE uses gray.
+- **`LabelList`** added to Recharts destructuring.
+- **Pushed to GitHub main branch**
 
 **2026-03-06 — Session 6**
 - Full UI overhaul to light mode (white bg, black fonts, IB pitchbook style)

@@ -292,7 +292,7 @@ function accum(m, row) {
   const { bucket: b, netAmount: na, netVolume: nv, grossVolume: gv } = row
   if (b === 'oil')           { m.oil_vol += Math.abs(nv); m.oil_rev += Math.abs(na); m.gross_oil += Math.abs(gv) }
   else if (b === 'gas')      { m.gas_vol += Math.abs(nv); m.gas_rev += Math.abs(na); m.gross_gas += Math.abs(gv) }
-  else if (b === 'ngl')      { m.ngl_vol += Math.abs(nv); m.ngl_rev += Math.abs(na); m.gross_ngl += Math.abs(gv) }
+  else if (b === 'ngl')      { m.ngl_vol += Math.abs(nv)/42; m.ngl_rev += Math.abs(na); m.gross_ngl += Math.abs(gv)/42 } // NGL volume in gallons -> BBL (/42)
   else if (b === 'fixed')          { m.fixed     += Math.abs(na) }
   else if (b === 'variable_oil')   { m.var_oil   += Math.abs(na) }
   else if (b === 'variable_water') { m.var_water += Math.abs(na) }
