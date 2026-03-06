@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.suo
+.vscode/
+.idea/
+
+# Vite cache
+.vite/
+
+# Sensitive data files — exclude raw LOS CSV data from version control
+# To include data files, remove these lines
+01. Analysis/
+pe-los-dashboard/public/data/*.csv
