@@ -20,6 +20,9 @@ Thumbs.db
 # Vite cache
 .vite/
 
+# Local CDN vendor files (downloaded at setup, not committed)
+recharts.umd.js
+
 # Sensitive data files — exclude raw LOS CSV data from version control
 # To include data files, remove these lines
 01. Analysis/

@@ -47,10 +47,8 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 - [x] BOM stripping for Excel-exported CSVs
 - [x] Dependency guard with helpful error messages if CDN scripts fail
 
-### Known Issue Being Debugged
-- Grey "Loading..." page on first open — caused by CDN script failure (most likely Recharts UMD not loading)
-- Fix applied: switched to jsDelivr for Recharts, added onerror fallback to unpkg, added dependency guard that shows a named error card instead of silent grey screen
-- **Next step:** User needs to open `LOS Dashboard.html` directly in Chrome and report whether they see the app or a red error card naming the failed script
+### Known Issues
+
 - **Node.js:** Confirmed NOT installed as of 2026-03-05 — `node --version` and `npm --version` both return "command not found" in Cursor terminal. Must install from [nodejs.org](https://nodejs.org) (LTS) before `pe-los-dashboard/` can be used.
 
 ### Unresolved / Needs Confirmation
@@ -59,8 +57,10 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 
 | # | Item | Action Required |
 |---|------|-----------------|
-| 1 | Grey "Loading..." page in `LOS Dashboard.html` | User must open the file directly in Chrome and report: does it show the app, or a red error card naming a failed script? |
-| 2 | Node.js not installed | User must install Node.js LTS from [nodejs.org](https://nodejs.org), then restart Cursor, before the Vite project can be used |
+| 1 | Node.js not installed | User must install Node.js LTS from [nodejs.org](https://nodejs.org), then restart Cursor, before the Vite project can be used |
+
+### Recently Resolved
+- **Grey page / Recharts CDN failure** — Confirmed 2026-03-06: jsDelivr and unpkg both fail to load `recharts@2.12.7/umd/Recharts.js`. Fix: downloaded UMD file locally to `recharts.umd.js` (498KB, excluded from git). HTML now loads Recharts from local file with CDN fallback. `recharts.umd.js` must be present in the same folder as `LOS Dashboard.html`.
 
 ---
 
@@ -280,6 +280,14 @@ If any script fails, a dependency guard at the top of the Babel script catches i
 ---
 
 ## Session Log (reverse chronological)
+
+**2026-03-06 — Session 4**
+- User confirmed grey page shows red error card: "Missing: Recharts"
+- Root cause: `recharts@2.12.7` UMD fails to load from both jsDelivr and unpkg on this machine
+- Fix: downloaded `recharts.umd.js` (498KB) locally; HTML now loads from local file with CDN as fallback
+- Added `recharts.umd.js` to `.gitignore` (vendor artifact, not committed)
+- Updated CLAUDE.md to reflect issue resolved; Recharts CDN failure is no longer an open item
+- **Still pending:** Node.js install for Vite project
 
 **2026-03-06 — Session 3**
 - Initialized git repository in project root

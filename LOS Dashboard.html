@@ -20,9 +20,9 @@
     onerror="window.__missing.push('React')"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
     onerror="window.__missing.push('ReactDOM')"></script>
-  <!-- Recharts: try jsdelivr first (more reliable for UMD), unpkg as fallback -->
-  <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js"
-    onerror="this.onerror=null;this.src='https://unpkg.com/recharts@2.12.7/umd/Recharts.js'"></script>
+  <!-- Recharts: load from local file first, CDN as fallback -->
+  <script src="recharts.umd.js"
+    onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.js';this.onerror=function(){this.onerror=null;this.src='https://unpkg.com/recharts@2.12.7/umd/Recharts.js'}"></script>
   <script src="https://unpkg.com/@babel/standalone@7.24.0/babel.min.js"
     onerror="window.__missing.push('Babel')"></script>
   <style>
