@@ -43,8 +43,12 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 - [x] 13 portfolio rollup charts — all BarCharts, titles with units, IB pitchbook style
 - [x] ARIES input form (VDR Case / My Case / Variance / Historical Avg)
 - [x] ARIES overlay reference lines on rollup charts (orange dashed = My Case, gray dotted = VDR)
-- [x] Well-by-well cards with 11 chart type options, search/filter, and sort (oil/gas/total vol)
+- [x] Well-by-well cards with 28 chart type options, search/filter, and sort (oil/gas/total vol)
 - [x] % of Total shown in each well card footer (contribution to portfolio for most recent month)
+- [x] LOS Table tab — full P&L-style LOS statement with Portfolio Total / per-well toggle, Net / Gross toggle, and Operating Margin row that ties to rollup totals
+- [x] Operated / Non-Operated / Total filter in nav bar — filters all tabs simultaneously
+- [x] Lift type filter in nav bar (All | JP | RP | Other) — stacked below op filter, composes with AND logic
+- [x] ARIES Inputs split: Operated and Non-Operated sub-columns for both VDR Case and My Case
 - [x] Export to CSV (ARIES inputs + full historical data)
 - [x] BOM stripping for Excel-exported CSVs
 - [x] Dependency guard with helpful error messages if CDN scripts fail
@@ -69,7 +73,6 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 ---
 
 ### Not Yet Built (Future)
-- [ ] GPT (Gathering/Processing/Transport) — separate CSV integration, TBD format
 - [ ] WTI oil price strip overlay
 - [ ] ARIES export formatted for ARIES economic model input
 
@@ -82,7 +85,7 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 | Index | Column | Notes |
 |-------|--------|-------|
 | 0 | Well Name | Trim whitespace |
-| 1 | Cost Category | Fixed, Var, VW, RevO, RevG, RevNGL, PTo, Other |
+| 1 | Cost Category | RevO, RevG, RevNGL, Fixed, Other, Var, VW, GPT, WORK, PTo, PTg, PTngl, AT, MS |
 | 2 | Gross Up By | WI or NRI |
 | 3 | NRI | Decimal e.g. 0.795799 |
 | 4 | WI | Decimal, usually 1.0 |
@@ -111,24 +114,43 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 
 ---
 
-## LOS Category → Bucket Mapping
+## Cost Category → Bucket Mapping
+
+**Cost Category is the primary index.** LOS Category is the fallback only when Cost Category is blank or unrecognized.
 
 ```js
+// PRIMARY — Cost Category (cat field, col 1)
+const COST_CAT_BUCKETS = {
+  'RevO': 'oil', 'RevG': 'gas', 'RevNGL': 'ngl',   // revenue + volume
+  'Fixed': 'fixed', 'Other': 'fixed',               // direct LOE
+  'Var':   'variable_oil',
+  'VW':    'variable_water',
+  'GPT':   'gpt',                                    // separate GPT section
+  'WORK':  'workover',                               // workover costs
+  'PTo': 'prod_taxes', 'PTg': 'prod_taxes', 'PTngl': 'prod_taxes', 'AT': 'prod_taxes',
+  'MS':  null,  // midstream revenue credit — EXCLUDED from analysis
+}
+
+// FALLBACK — LOS Category (los field, col 16)
 const LOS_BUCKETS = {
-  'Oil': 'oil', 'Gas': 'gas', 'NGL': 'ngl',            // revenue + volume
+  'Oil': 'oil', 'Gas': 'gas', 'NGL': 'ngl',
   'Chemicals': 'variable_oil', 'Fuel & Power': 'variable_oil',
+  'Gathering, Trans. & Processing': 'variable_oil',
   'Liquids Hauling & Disposal': 'variable_water',
   'Company Labor': 'fixed', 'Contract Labor/Pumper': 'fixed',
   'Field Office': 'fixed', 'EHS & Regulatory': 'fixed',
+  'LOE': 'fixed',
   'Measurement/Automation': 'fixed', 'Surface Repairs & Maint': 'fixed',
   'Vehicles': 'fixed', 'Well Servicing': 'fixed',
+  'Ad Valorem Taxes': 'prod_taxes',
   'Production Taxes-Oil': 'prod_taxes', 'Production Taxes-Gas': 'prod_taxes',
   'Production Taxes-NGL': 'prod_taxes',
   'CAPEX': 'capex',  // excluded from LOS
+  // 'Non-LOS': unmapped → null → skipped
 }
 ```
 
-Fallback: if LOS CATEGORY not in map, use Cost Category tag (Fixed→fixed, Var→variable_oil, VW→variable_water, RevO→oil, etc.)
+**Buckets:** `oil`, `gas`, `ngl`, `fixed`, `variable_oil`, `variable_water`, `gpt`, `workover`, `prod_taxes`, `capex` (excluded), `null` (skipped)
 
 ---
 
@@ -139,7 +161,10 @@ const GAS_BOE = 6  // 6 MCF = 1 BOE
 
 netBOE        = oil_vol + ngl_vol + (gas_vol / 6)
 totalRevenue  = abs(oil_rev) + abs(gas_rev) + abs(ngl_rev)  // revenue stored negative
-totalLOS      = fixed + var_oil + var_water + prod_taxes     // CAPEX excluded
+totalFixed    = fixed + workover                  // Fixed & Workover always combined
+totalLOS      = var_oil + var_water + totalFixed + gpt + prod_taxes  // CAPEX + MS excluded
+assetFCF      = opMargin - capex                 // Asset Free Cash Flow
+capexPerWell  = capex / active_well_count
 opMargin      = totalRevenue - totalLOS
 
 realizedOil   = oil_rev / oil_vol       // $/BBL
@@ -238,21 +263,35 @@ C:\Coding Projects\01. Crescent Pass\
 ## ARIES Inputs State Shape
 
 ```js
+// Nested by op/obo sub-case (added Session 9)
 {
   vdrCase: {
-    fixedPerWellMonth: '',   // $/well/month — flat, no escalation
-    varOilPerBOE:      '',   // $/BOE — applied to oil + NGL
-    varWaterPerBBL:    '',   // $/BBL water — water vols not in LOS
-    prodTaxPct:        '',   // % of gross revenue
-    oilDiff:           '',   // $/BBL vs WTI (negative = discount)
-    gasDiff:           '',   // $/MMBTU vs Henry Hub
-    nglDiffPct:        '',   // % of WTI e.g. 35
+    op:  { fixedPerWellMonth, varOilPerBOE, varWaterPerBBL, prodTaxPct, oilDiff, gasDiff, nglDiffPct },
+    obo: { ...same keys... },
   },
-  myCase: { ...same keys... }
+  myCase: {
+    op:  { ...same keys... },
+    obo: { ...same keys... },
+  }
 }
-// Variance = myCase - vdrCase
+
+// activeInputs (computed memo) — flattened for chart reference lines
+// opFilter === 'obo'  → uses obo sub-case
+// opFilter === 'op' or 'all' → uses op sub-case
+activeInputs = { vdrCase: inputs.vdrCase[slice], myCase: inputs.myCase[slice] }
+
+// Variance = myCase[slice] - vdrCase[slice]
 // Green = My Case better (lower cost, or higher differential)
 // Red   = My Case worse
+
+// Key definitions (all fields, same for op and obo):
+//   fixedPerWellMonth — $/well/month, flat (no escalation)
+//   varOilPerBOE      — $/BOE, applied to oil + NGL
+//   varWaterPerBBL    — $/BBL water (water vols not in LOS data)
+//   prodTaxPct        — % of gross revenue
+//   oilDiff           — $/BBL vs WTI (negative = discount)
+//   gasDiff           — $/MMBTU vs Henry Hub
+//   nglDiffPct        — % of WTI e.g. 35
 ```
 
 ---
@@ -314,6 +353,57 @@ DISCORD_CHANNEL_ID  = your-channel-id
 ---
 
 ## Session Log (reverse chronological)
+
+**2026-03-06 — Session 12**
+- **`Other` cat = CAPEX**: `COST_CAT_BUCKETS['Other']` changed from `'fixed'` → `'capex'`. CAPEX is now tracked separately and excluded from all LOE totals.
+- **CAPEX flows through full pipeline**: `emptyM` + `accum` + `metrics` now accumulate `capex`. `buildMonthlyRollup` and `buildWellData` no longer skip capex rows. `buildLOSCatData` no longer skips capex rows.
+- **New metrics**: `totalFixed = fixed + workover` (combined), `capexPerWell = capex / wellCount`, `assetFCF = opMargin - capex`.
+- **`fixedPerWell` now = (fixed + workover) / wellCount** universally — matches "Total Fixed = Fixed + Workover" rule.
+- **LOS Table restructured** (top to bottom): Variable Oil → Variable Water → Fixed & Workover (combined) → GP&T → Production Taxes → Total LOE → Operating Margin → CAPEX → Asset Free Cash Flow.
+- **Asset Free Cash Flow row**: green margin row added below CAPEX in LOS Table. = Operating Margin − CAPEX.
+- **Rollup Total LOS stacked chart**: now stacks var_oil + var_water + totalFixed + gpt + prod_taxes (was missing gpt+workover).
+- **New rollup charts**: "Fixed & Workover ($M)", "GPT ($M)", "CAPEX ($M)" in Total Cost section; "CAPEX ($/Well/mo)" in Unit Cost section.
+- **Colors added**: `gpt: #4472C4` (slate blue), `workover: #70AD47` (green), `capex: #C00000` (dark red).
+- **WBW costStack**: now stacks var_oil + var_water + totalFixed + gpt + prod_taxes (capex excluded from LOE stack).
+
+**2026-03-06 — Session 11**
+- **Cost Category made primary index**: `resolveBucket()` now checks `cat` (Cost Category, col 1) first, falls back to `los` (LOS Category, col 16). Previously `los` was primary.
+- **New buckets added**: `gpt` (Gathering/Trans/Processing) and `workover`. Both tracked separately through `emptyM`, `accum`, `metrics`, and `totalLOS`.
+- **`MS` (midstream revenue credit) explicitly excluded**: maps to `null` → skipped in all aggregations.
+- **COST_CAT_BUCKETS reworked**: `Other→fixed`, `GPT→gpt`, `WORK→workover`, `AT→prod_taxes`, `PTngl→prod_taxes` (renamed from `PTn`), `MS→null`.
+- **LOS Table new sections**: "Gathering, Trans. & Processing" section (subtotal GPT) and "Workover" section added between Direct LOE and Production Taxes. `totalLOE` now includes GPT + Workover.
+- **JP/RP_USE column fix**: lift filter now reads from `JP/RP_USE` column (detected by header name, fuzzy match) instead of hardcoded `JP/RP` at col 8. `Other` lift type = wells where `JP/RP_USE` value is not "JP" or "RP" (includes "Other"/"ALLOC" tagged rows).
+- **LOS bucket additions**: `Ad Valorem Taxes→prod_taxes`, `LOE→fixed`, `Gathering, Trans. & Processing→variable_oil` added to LOS_BUCKETS fallback.
+
+**2026-03-06 — Session 10**
+- **Lift type multi-select filter** added to nav bar (JP / RP / Other pills, stacked below Op/Non-Op toggle). `liftFilter` is an array — multiple lift types can be active simultaneously. `filteredRows` applies AND logic between op + lift filters and OR logic across selected lift types. "Clear" button resets to all.
+- **LOS Table $/BOE toggle**: `perBoe` state added to `LOSTableTab`. `bw()` wrapper divides dollar amounts by that month's total BOE when active. `fDol` / `fM` formatters show `$X.XX` (no unit suffix) — units are communicated via the table title only.
+- **LOS Statement title is dynamic**: shows `"LOS Statement ($/BOE)"` when perBoe is on, `"LOS Statement ($)"` when off. No `/BOE` text appears next to individual cell values.
+- **LOS Statement visual reformat**: section header rows (`rHdr`) now render as plain bold text in the sticky first column with no dark background and empty `<td>` cells for month columns — dates appear only once in the `<thead>`.
+- **WBW units: MBoed → Boed / MMcfd → Mcfd**: New formatters `fBoed` and `fMcfd` display raw (unscaled) values. `WBW_TYPES` array and `WellMiniChart` internal formatters updated throughout. Labels updated (e.g. "Boed", "Mcfd").
+- **Single-bar chart fix**: `maxBarSize={80}` added to all `BarChart` instances in `WellMiniChart` — prevents bars from stretching excessively wide when only one or two data points are visible after filtering.
+- **Lift filter bug fix — well-level modal classification**: `filteredRows` previously checked `r.jpRp` at the row level, excluding all per-well cost rows when "Other" was selected. Fix v1 used "last non-empty" well-level classification. Fix v2 (current) uses **modal (most-frequent) classification counting blank rows** — this prevents a single stray JP/RP row on an ALLOC well from overriding the true classification. `wellJpRpCounts` tallies every row's jpRp (including blanks) per well; the modal value determines the well's lift type for filtering.
+- **LOS table catch-all "Other Midstream" section**: Added `unknownCats` to surface any LOS category whose bucket doesn't resolve to a known bucket (null or unmapped). Rows slip through due to missing LOS_BUCKETS/COST_CAT_BUCKETS mappings appear in this section rather than being silently dropped.
+- **LOS table section restructure** (matching financial statement image): replaced Variable Oil / Variable Water / Fixed & Workover / GPT / Production Taxes section headers with: **Direct LOE** (variable_oil + variable_water + fixed, excluding named recurring items), **Recurring LOE** (Overhead, LOE, Insurance — configured via `RECURRING_NAMES` Set), **Other Operating Expenses** (workover + prod_taxes + gpt). Subtotals are cumulative: Total Direct LOE → Total Recurring LOE (= Direct + Recurring) → Total Operating Expenses (= all). Operating Margin and Asset FCF are highlighted rows. Asset FCF = Op Margin − CAPEX − Other Midstream.
+- **Sign handling bug fix (buildLOSCatData + accum)**: Both `buildLOSCatData` and `accum()` previously used `Math.abs()` on ALL amounts, including cost rows. Credit/reversal rows (stored as NEGATIVE in source) were incorrectly flipped to positive and added. Fix: revenue buckets (oil/gas/ngl) still use `Math.abs()` since they're stored negative; cost buckets (fixed, variable_oil, variable_water, gpt, workover, prod_taxes, capex) now use the raw signed amount directly so credits reduce totals correctly.
+- **LOS_BUCKETS GPT fix**: `'Gathering, Trans. & Processing'` was incorrectly mapped to `'variable_oil'`; corrected to `'gpt'`. Same fix propagates to `accum()` automatically via `resolveBucket`. Note: rows where Cost Category column = 'Var' still resolve to 'variable_oil' (COST_CAT_BUCKETS takes priority in resolveBucket); only rows where LOS CATEGORY is 'Gathering, Trans. & Processing' AND Cost Category is not in COST_CAT_BUCKETS resolve to 'gpt' via LOS_BUCKETS.
+
+**2026-03-06 — Session 9**
+- **Operated / Non-Operated / Total filter** added to nav bar (pill toggle: Total | Operated | Non-Op). Filters `filteredRows` → `rollup` → `wellData` → all tabs simultaneously. Active filter label shown as badge in header stats.
+- **ARIES Inputs split into Op/Non-Op**: state shape changed from `{vdrCase:{key}, myCase:{key}}` to `{vdrCase:{op:{key},obo:{key}}, myCase:{op:{key},obo:{key}}}`. InputsTab now shows 4 input columns (VDR Operated, VDR Non-Op, My Operated, My Non-Op) + 2 variance columns + Hist Avg.
+- **`activeInputs`**: computed `useMemo` that flattens the op/obo sub-level based on the active `opFilter` (`'all'`→op, `'op'`→op, `'obo'`→obo). Passed to RollupTab and WellByWellTab for chart reference lines.
+- **exportInputs**: updated to export 4 input columns (VDR Op, VDR OBO, My Op, My OBO) plus separate variance columns for each sub-case.
+- **LOSTableTab**: now receives `filteredRows` (op-filtered) instead of raw `rows`, so the LOS table also respects the global op filter.
+
+**2026-03-06 — Session 8**
+- **LOS Table tab** (was "Well by Well Tables") completely replaced with a P&L-style LOS statement
+- **View toggle**: dropdown to switch between "Portfolio Total" and any individual well
+- **Net/Gross toggle**: switches all volumes and dollar amounts between net (NRI-adjusted) and gross (pre-NRI/WI)
+- **Table structure**: Volumes (Gas/Oil/NGL/BOE + Daily Rate), Revenues, Direct LOE (per-category line items), Production Taxes (per-category), Total LOE, Operating Margin
+- **LOE line items** are dynamic — all LOS_CATEGORY values from data are shown individually, alpha-sorted within each bucket group (fixed, variable_oil, variable_water)
+- **Ties to rollup**: `buildLOSCatData()` uses the same bucket exclusions (skips null bucket + capex) as `buildMonthlyRollup()`, so Total LOE and Operating Margin match the Asset Rollup tab
+- **`buildLOSCatData(rawRows, isGross)`** — new aggregation function; tracks per-category amounts and volumes per month; NGL volume converted gallons→BBL (/42); signs flipped via Math.abs() on both amount and volume
+- **Tab label** changed from "Well by Well Tables" to "LOS Table"
 
 **2026-03-06 — Session 7**
 - **GAS BOE CONFIRMED**: `netBOE = oil_vol + ngl_vol + gas_vol/6` with `GAS_BOE = 6` constant. Added `netGasBOEd`, `grossGasBOEd`, `netGasBOE`, `grossGasBOE` to metrics() so stacked BOE charts correctly convert gas from MCF to BOE (was a unit mismatch bug: stacking MCF with BBL in previous sessions)

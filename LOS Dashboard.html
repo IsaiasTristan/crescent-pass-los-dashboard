@@ -88,19 +88,36 @@ const {
 const LOS_BUCKETS = {
   'Oil': 'oil', 'Gas': 'gas', 'NGL': 'ngl',
   'Chemicals': 'variable_oil', 'Fuel & Power': 'variable_oil',
+  'Gathering, Trans. & Processing': 'gpt',
+  'Midstream Revenue': 'midstream',             // covers any capitalisation via case-insensitive lookup
+  'Midstream Revenue Elimination': 'midstream',
   'Liquids Hauling & Disposal': 'variable_water',
   'Company Labor': 'fixed', 'Contract Labor/Pumper': 'fixed',
   'Field Office': 'fixed', 'EHS & Regulatory': 'fixed',
+  'LOE': 'fixed',
   'Measurement/Automation': 'fixed', 'Surface Repairs & Maint': 'fixed',
   'Vehicles': 'fixed', 'Well Servicing': 'fixed',
+  'Ad Valorem Taxes': 'prod_taxes',
   'Production Taxes-Oil': 'prod_taxes', 'Production Taxes-Gas': 'prod_taxes',
   'Production Taxes-NGL': 'prod_taxes', 'CAPEX': 'capex',
 }
 
 const COST_CAT_BUCKETS = {
-  'Fixed': 'fixed', 'Var': 'variable_oil', 'VW': 'variable_water',
+  // Revenue
   'RevO': 'oil', 'RevG': 'gas', 'RevNGL': 'ngl',
-  'PTo': 'prod_taxes', 'PTg': 'prod_taxes', 'PTn': 'prod_taxes',
+  // Direct LOE
+  'Fixed': 'fixed',
+  'Other': 'capex',   // "Other" cat = CAPEX per LOS category — excluded from LOE
+  'Var':   'variable_oil',
+  'VW':    'variable_water',
+  // GPT
+  'GPT':   'gpt',
+  // Workover
+  'WORK':  'workover',
+  // Production taxes
+  'PTo': 'prod_taxes', 'PTg': 'prod_taxes', 'PTngl': 'prod_taxes', 'AT': 'prod_taxes',
+  // Midstream revenue / elimination — own bucket, shown separately from GPT
+  'MS': 'midstream', 'MS Rev': 'midstream', 'MSRev': 'midstream', 'MS Elim': 'midstream',
 }
 
 // Sequential color palette: dark navy -> medium blue -> gray -> orange -> green -> light gray
@@ -111,6 +128,10 @@ const C = {
   fixed:     '#1F3864',  // dark navy
   varOil:    '#2E74B5',  // medium blue
   varWater:  '#808080',  // gray
+  gpt:        '#4472C4',  // slate blue
+  midstream:  '#7030A0',  // purple
+  workover:   '#70AD47',  // green
+  capex:     '#C00000',  // dark red
   prodTaxes: '#C55A11',  // burnt orange
   revenue:   '#1F3864',
   margin:    '#548235',  // forest green
@@ -152,9 +173,12 @@ function buildColMap(headerRow) {
   h.forEach((name, i) => {
     if (exact[name] !== undefined) col[exact[name]] = i
   })
-  // JP/RP: first occurrence
-  const jpIdx = h.indexOf('jp/rp')
-  if (jpIdx !== -1) col.JP_RP = jpIdx
+  // JP/RP_USE takes priority; fall back to JP/RP
+  // Match any header containing both "jp" (or "rp") and "use" for robustness
+  const jpRpUseIdx = h.findIndex(v => /jp.*rp.*use|rp.*jp.*use/i.test(v) || v === 'jp/rp_use' || v === 'jp_rp_use' || v === 'jp/rp use')
+  const jpIdx      = h.indexOf('jp/rp')
+  if (jpRpUseIdx !== -1) col.JP_RP = jpRpUseIdx
+  else if (jpIdx !== -1) col.JP_RP = jpIdx
   // Net Amount: last occurrence (col 7 is gross net amount, col 21 is the real net)
   let lastNA = -1
   h.forEach((name, i) => { if (name === 'net amount') lastNA = i })
@@ -190,9 +214,30 @@ function parseNum(raw) {
   return isNaN(n) ? 0 : n
 }
 
+// LOS categories to completely exclude from all analysis (internal reclasses, not real costs/revenues).
+// These take priority over cost category — rows with these LOS values are ignored everywhere.
+const LOS_IGNORE = new Set([
+  'midstream gpt elimination',   // internal GPT reclass — not a real cost
+  'midstream loe reclass',       // internal LOE reclass — not a real cost
+])
+
+// Case-insensitive lookup tables built once at startup
+const _COST_CAT_LOWER = Object.fromEntries(
+  Object.entries(COST_CAT_BUCKETS).map(([k, v]) => [k.toLowerCase(), v])
+)
+const _LOS_LOWER = Object.fromEntries(
+  Object.entries(LOS_BUCKETS).map(([k, v]) => [k.toLowerCase(), v])
+)
+
 function resolveBucket(los, cat) {
-  if (los && LOS_BUCKETS[los] !== undefined) return LOS_BUCKETS[los]
-  return COST_CAT_BUCKETS[cat] || null
+  const l = (los || '').trim().toLowerCase()
+  const c = (cat || '').trim().toLowerCase()
+  // LOS-level ignore overrides cost category — excluded from every chart and table
+  if (l && LOS_IGNORE.has(l)) return 'ignore'
+  // Cost Category lookup (case-insensitive), then LOS Category fallback
+  if (c) { const v = _COST_CAT_LOWER[c]; if (v !== undefined) return v }
+  if (l) { const v = _LOS_LOWER[l];      if (v !== undefined) return v }
+  return null
 }
 
 function parseCSVText(text) {
@@ -261,6 +306,39 @@ function parseCSVText(text) {
       `First data row: ${firstDataRow.length} cols | well[${col.WELL_NAME}]="${sampleName}" | date[${col.SERVICE_END_DATE}]="${sampleDate}" | delim="${delimiter === '\t' ? 'TAB' : 'COMMA'}"`
     )
   }
+
+  // --- DIAGNOSTIC: MS / Midstream row audit (remove once data is verified) ---
+  const msRows = parsed.filter(r =>
+    (r.cat || '').toUpperCase().startsWith('MS') ||
+    (r.los || '').toLowerCase().includes('midstream') ||
+    (r.los || '').toLowerCase().startsWith('ms')
+  )
+  if (msRows.length) {
+    // Unique cat values found — helps spot spelling/spacing mismatches
+    const catsSeen = [...new Set(msRows.map(r => `"${r.cat}"`))]
+    const losSeen  = [...new Set(msRows.map(r => `"${r.los}"`))]
+    console.group(`%c[MS Audit] ${msRows.length} midstream rows found`, 'color:#C55A11;font-weight:bold')
+    console.log('Cost Category values seen:', catsSeen.join(', '))
+    console.log('LOS Category values seen:', losSeen.join(', '))
+
+    // Per-month summary of net amounts and bucket assignments
+    const byMonth = {}
+    for (const r of msRows) {
+      if (!byMonth[r.monthKey]) byMonth[r.monthKey] = []
+      byMonth[r.monthKey].push({ well: r.wellName, cat: r.cat, los: r.los, bucket: r.bucket, netAmt: r.netAmount })
+    }
+    for (const [mk, rows] of Object.entries(byMonth).sort()) {
+      const total = rows.reduce((s, r) => s + r.netAmt, 0)
+      console.group(`${mk}  →  net total = ${total.toLocaleString('en-US', {style:'currency',currency:'USD',maximumFractionDigits:0})}`)
+      console.table(rows)
+      console.groupEnd()
+    }
+    console.groupEnd()
+  } else {
+    console.warn('[MS Audit] No midstream rows matched. Check Cost Category column spelling in your CSV.')
+  }
+  // --- END DIAGNOSTIC ---
+
   return parsed
 }
 
@@ -284,19 +362,26 @@ function emptyM(date, mk, md) {
     oil_vol: 0, gas_vol: 0, ngl_vol: 0,
     oil_rev: 0, gas_rev: 0, ngl_rev: 0,
     gross_oil: 0, gross_gas: 0, gross_ngl: 0,
-    fixed: 0, var_oil: 0, var_water: 0, prod_taxes: 0,
+    fixed: 0, var_oil: 0, var_water: 0, gpt: 0, midstream: 0, workover: 0, prod_taxes: 0, capex: 0,
   }
 }
 
 function accum(m, row) {
   const { bucket: b, netAmount: na, netVolume: nv, grossVolume: gv } = row
+  // Revenue rows are stored as NEGATIVE in source → use Math.abs() to make positive.
+  // Cost/tax/GPT rows are stored as POSITIVE; credit/reversal rows are stored NEGATIVE
+  // and must REDUCE the total, so we add na directly (no Math.abs).
   if (b === 'oil')           { m.oil_vol += Math.abs(nv); m.oil_rev += Math.abs(na); m.gross_oil += Math.abs(gv) }
   else if (b === 'gas')      { m.gas_vol += Math.abs(nv); m.gas_rev += Math.abs(na); m.gross_gas += Math.abs(gv) }
-  else if (b === 'ngl')      { m.ngl_vol += Math.abs(nv)/42; m.ngl_rev += Math.abs(na); m.gross_ngl += Math.abs(gv)/42 } // NGL volume in gallons -> BBL (/42)
-  else if (b === 'fixed')          { m.fixed     += Math.abs(na) }
-  else if (b === 'variable_oil')   { m.var_oil   += Math.abs(na) }
-  else if (b === 'variable_water') { m.var_water += Math.abs(na) }
-  else if (b === 'prod_taxes')     { m.prod_taxes += Math.abs(na) }
+  else if (b === 'ngl')      { m.ngl_vol += Math.abs(nv)/42; m.ngl_rev += Math.abs(na); m.gross_ngl += Math.abs(gv)/42 }
+  else if (b === 'fixed')          { m.fixed      += na }
+  else if (b === 'variable_oil')   { m.var_oil    += na }
+  else if (b === 'variable_water') { m.var_water  += na }
+  else if (b === 'gpt')            { m.gpt        += na }
+  else if (b === 'midstream')      { m.midstream  += na }
+  else if (b === 'workover')       { m.workover   += na }
+  else if (b === 'prod_taxes')     { m.prod_taxes += na }
+  else if (b === 'capex')          { m.capex      += na }
 }
 
 function metrics(m, wc) {
@@ -304,7 +389,7 @@ function metrics(m, wc) {
   const netBOE   = m.oil_vol + m.ngl_vol + sd(m.gas_vol, GAS_BOE)
   const grossBOE = m.gross_oil + m.gross_ngl + sd(m.gross_gas, GAS_BOE)
   const rev  = m.oil_rev + m.gas_rev + m.ngl_rev
-  const los  = m.fixed + m.var_oil + m.var_water + m.prod_taxes
+  const los  = m.fixed + m.var_oil + m.var_water + m.gpt + m.workover + m.prod_taxes
   const margin = rev - los
   return {
     ...m, wellCount: wc, netBOE, grossBOE,
@@ -317,10 +402,15 @@ function metrics(m, wc) {
     grossGasBOEd: sd(m.gross_gas / GAS_BOE, days),
     netGasBOE:    m.gas_vol / GAS_BOE,
     grossGasBOE:  m.gross_gas / GAS_BOE,
+    midstream: m.midstream,
+    midstreamPerBOE: sd(m.midstream, netBOE),
     totalRevenue: rev, totalLOS: los, opMargin: margin,
+    totalFixed:      m.fixed + m.workover,
+    assetFCF:        margin - m.capex,
     varOilPerBOE:    sd(m.var_oil, m.oil_vol + m.ngl_vol),
     varWaterPerMonth: m.var_water,
-    fixedPerWell:    sd(m.fixed, wc),
+    fixedPerWell:    sd(m.fixed + m.workover, wc),   // Fixed & Workover combined
+    capexPerWell:    sd(m.capex, wc),
     prodTaxPct:      rev > 0 ? sd(m.prod_taxes, rev) * 100 : 0,
     costPerBOE:      sd(los, netBOE),
     revenuePerBOE:   sd(rev, netBOE),
@@ -334,10 +424,10 @@ function metrics(m, wc) {
 function buildMonthlyRollup(rows) {
   const mm = {}, mw = {}
   for (const r of rows) {
-    if (!r.bucket || r.bucket === 'capex') continue
+    if (!r.bucket || r.bucket === 'ignore') continue
     const k = r.monthKey
     if (!mm[k]) { mm[k] = emptyM(r.date, r.monthKey, r.monthDisp); mw[k] = new Set() }
-    mw[k].add(r.wellName)
+    if (r.bucket !== 'capex') mw[k].add(r.wellName)  // well count only from operating rows
     accum(mm[k], r)
   }
   return Object.values(mm)
@@ -356,7 +446,7 @@ function buildWellData(rows) {
     if (r.opObo) w.opObo = r.opObo
     if (r.nri)   w.nri   = r.nri
     if (r.wi)    w.wi    = r.wi
-    if (!r.bucket || r.bucket === 'capex') continue
+    if (!r.bucket || r.bucket === 'ignore') continue
     const k = r.monthKey
     if (!w.months[k]) w.months[k] = emptyM(r.date, r.monthKey, r.monthDisp)
     accum(w.months[k], r)
@@ -388,7 +478,13 @@ function exportInputs(ai) {
   const { vdrCase: v, myCase: m } = ai
   const diff = (a, b) => { const an=parseFloat(a), bn=parseFloat(b); return (isNaN(an)||isNaN(bn)) ? '' : (bn-an).toFixed(4) }
   const pct  = (a, b) => { const an=parseFloat(a), bn=parseFloat(b); return (isNaN(an)||isNaN(bn)||an===0) ? '' : `${(((bn-an)/Math.abs(an))*100).toFixed(1)}%` }
-  const row  = (label, key) => ({ Input: label, 'VDR Case': v[key], 'My Case': m[key], Variance: diff(v[key],m[key]), 'Variance %': pct(v[key],m[key]) })
+  const row  = (label, key) => ({
+    Input: label,
+    'VDR Case (Operated)':  v.op[key],  'VDR Case (Non-Op)':  v.obo[key],
+    'My Case (Operated)':   m.op[key],  'My Case (Non-Op)':   m.obo[key],
+    'Variance (Op)':  diff(v.op[key], m.op[key]),  'Var% (Op)':  pct(v.op[key], m.op[key]),
+    'Variance (OBO)': diff(v.obo[key], m.obo[key]), 'Var% (OBO)': pct(v.obo[key], m.obo[key]),
+  })
   dlCSV('aries_inputs_export.csv', [
     row('Fixed Costs ($/well/month)', 'fixedPerWellMonth'),
     row('Variable Oil ($/BOE)', 'varOilPerBOE'),
@@ -440,10 +536,14 @@ const f$    = n => (n==null||isNaN(n)) ? '--' : `$${Number(n).toLocaleString('en
 const fB    = n => (n==null||isNaN(n)) ? '--' : `$${Number(n).toFixed(2)}`
 const fP    = n => (n==null||isNaN(n)) ? '--' : `${Number(n).toFixed(2)}%`
 const fG    = n => (n==null||isNaN(n)) ? '--' : `$${Number(n).toFixed(3)}`
-// MBoe/d or MBpd: thousands BOE/d or Bbl/d, comma-formatted, 2 decimals
+// MBoe/d or MBpd: thousands BOE/d or Bbl/d — used for portfolio rollup charts
 const fMBd  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : (n/1000).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
-// MMcfd or MMcf: thousands MCF/d or MCF/mo, comma-formatted, 2 decimals
+// MMcfd or MMcf — used for portfolio rollup charts
 const fMMcfd = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : (n/1000).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+// Boe/d or Bbl/d — raw values, 1 decimal; used for well-by-well (small individual wells)
+const fBoed  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : n.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})
+// Mcf/d or Mcf/mo — raw MCF values for well-by-well
+const fMcfd  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : n.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})
 // $M: millions of dollars with 1 decimal
 const fMdol  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : `$${(n/1e6).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})}M`
 // Bar label helpers: factory functions returning Recharts LabelList content renderers
@@ -528,94 +628,154 @@ function InputsTab({ ariesInputs, setAriesInputs, monthlyRollup }) {
     return out
   }, [monthlyRollup])
 
-  const onChange = (ct, key, val) =>
-    setAriesInputs(prev => ({ ...prev, [ct]: { ...prev[ct], [key]: val } }))
+  const onChange = (ct, sub, key, val) =>
+    setAriesInputs(prev => ({ ...prev, [ct]: { ...prev[ct], [sub]: { ...prev[ct][sub], [key]: val } } }))
 
-  const variance = field => {
-    const v = parseFloat(ariesInputs.vdrCase[field.key])
-    const m = parseFloat(ariesInputs.myCase[field.key])
+  const variance = (field, sub) => {
+    const v = parseFloat(ariesInputs.vdrCase[sub][field.key])
+    const m = parseFloat(ariesInputs.myCase[sub][field.key])
     if (isNaN(v) || isNaN(m)) return null
     const diff = m - v
     return { diff, pct: v !== 0 ? (diff / Math.abs(v)) * 100 : null }
   }
 
-  const vColor = (field, v) => {
-    if (!v) return 'text-gray-400'
-    if (v.diff === 0) return 'text-gray-500'
-    const better = field.lowerIsBetter ? v.diff < 0 : v.diff > 0
-    return better ? 'text-emerald-600' : 'text-red-500'
+  const vColor = (field, varObj) => {
+    if (!varObj) return '#9CA3AF'
+    if (varObj.diff === 0) return '#6B7280'
+    return (field.lowerIsBetter ? varObj.diff < 0 : varObj.diff > 0) ? '#059669' : '#DC2626'
   }
+
+  // Shared cell styles
+  const thG  = { padding:'7px 10px', textAlign:'center', fontWeight:700, fontSize:'10px', textTransform:'uppercase', letterSpacing:'0.06em', borderLeft:'1px solid #E5E7EB', whiteSpace:'nowrap' }
+  const thS  = { padding:'4px 10px', textAlign:'center', fontWeight:600, fontSize:'10px', color:'#9CA3AF', borderLeft:'1px solid #E5E7EB', whiteSpace:'nowrap' }
+  const tdL  = { padding:'10px 14px', verticalAlign:'middle', minWidth:'170px' }
+  const tdI  = { padding:'6px 8px',  verticalAlign:'middle', minWidth:'108px' }
+  const tdV  = { padding:'8px 10px', textAlign:'right', verticalAlign:'middle', minWidth:'95px', fontSize:'12px' }
+  const tdH  = { padding:'8px 14px', textAlign:'right', verticalAlign:'middle', minWidth:'110px', borderLeft:'2px solid #E5E7EB', fontSize:'12px', fontFamily:'monospace' }
+  const inp  = (ct, sub) => ({
+    width:'100%', border:`1px solid ${ct==='myCase' ? (sub==='op' ? '#1F3864' : '#2E74B5') : '#D1D5DB'}`,
+    borderRadius:'4px', padding:'5px 7px', textAlign:'right', fontSize:'12px', outline:'none', background:'white', color:'#111827',
+  })
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-gray-900">ARIES Model Inputs</h2>
-          <p className="text-xs text-gray-500 mt-1">Set forward-looking assumptions. My Case values appear as reference lines on charts.</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Separate operated / non-operated assumptions. Active filter (nav bar) determines which set drives chart reference lines.
+          </p>
         </div>
         <button onClick={() => exportInputs(ariesInputs)}
-          className="px-4 py-2 bg-white border border-gray-300 rounded text-sm text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors cursor-pointer font-semibold">
+          className="px-4 py-2 bg-white border border-gray-300 rounded text-sm text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors cursor-pointer font-semibold flex-shrink-0">
           Export Inputs to CSV
         </button>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded overflow-hidden" style={{boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
-        <div style={{display:'grid', gridTemplateColumns:'200px 1fr 1fr 160px 140px'}} className="border-b border-gray-200 bg-gray-50">
-          {['Input','VDR Case','My Case','Variance','Historical Avg'].map((h,i) => (
-            <div key={h} className={`px-4 py-2.5 text-[10px] font-bold uppercase tracking-wider ${i===2?'text-[#1F3864]':'text-gray-500'} ${i>0?'border-l border-gray-200':''}`}>{h}</div>
-          ))}
-        </div>
-
-        {INPUT_FIELDS.map((field, idx) => {
-          const v = variance(field)
-          const col = vColor(field, v)
-          const hv = hAvgs[field.key]
-          return (
-            <div key={field.key} style={{display:'grid', gridTemplateColumns:'200px 1fr 1fr 160px 140px'}}
-              className={`hover:bg-gray-50 transition-colors ${idx < INPUT_FIELDS.length-1 ? 'border-b border-gray-100' : ''}`}>
-              <div className="px-4 py-3">
-                <div className="text-sm text-gray-900 font-semibold">{field.label}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{field.unit}</div>
-              </div>
-              {['vdrCase','myCase'].map(ct => (
-                <div key={ct} className="px-4 py-3 border-l border-gray-100 flex items-center">
-                  <input type="number" step="any"
-                    value={ariesInputs[ct][field.key]}
-                    onChange={e => onChange(ct, field.key, e.target.value)}
-                    placeholder="--"
-                    className={`w-full bg-white border rounded px-2 py-1.5 text-sm text-gray-900 placeholder-gray-300 text-right outline-none transition-colors
-                      ${ct==='myCase' ? 'border-[#1F3864]/30 focus:border-[#1F3864]' : 'border-gray-200 focus:border-gray-400'}`}
-                  />
-                </div>
+      <div className="bg-white border border-gray-200 rounded overflow-x-auto" style={{boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
+        <table style={{borderCollapse:'collapse', width:'100%', fontSize:'12px'}}>
+          <thead>
+            {/* Group header row */}
+            <tr style={{background:'#F9FAFB', borderBottom:'1px solid #E5E7EB'}}>
+              <th style={{...thG, textAlign:'left', color:'#6B7280', borderLeft:'none', minWidth:'170px'}}>Input</th>
+              <th colSpan={2} style={{...thG, background:'#F0F4FF', color:'#1F3864'}}>VDR Case</th>
+              <th colSpan={2} style={{...thG, background:'#F0F4FF', color:'#1F3864', borderLeft:'2px solid #1F3864'}}>My Case</th>
+              <th colSpan={2} style={{...thG, color:'#6B7280'}}>Variance (My − VDR)</th>
+              <th style={{...thG, color:'#6B7280', borderLeft:'2px solid #E5E7EB'}}>Hist Avg</th>
+            </tr>
+            {/* Sub-header row */}
+            <tr style={{background:'#F9FAFB', borderBottom:'2px solid #E5E7EB'}}>
+              <th style={{...thS, borderLeft:'none'}}></th>
+              <th style={{...thS}}>Operated</th>
+              <th style={{...thS}}>Non-Op</th>
+              <th style={{...thS, borderLeft:'2px solid #1F3864'}}>Operated</th>
+              <th style={{...thS}}>Non-Op</th>
+              <th style={{...thS}}>Operated</th>
+              <th style={{...thS}}>Non-Op</th>
+              <th style={{...thS, borderLeft:'2px solid #E5E7EB', color:'#6B7280'}}>filtered avg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {INPUT_FIELDS.map((field, idx) => {
+              const vOp  = variance(field, 'op')
+              const vObo = variance(field, 'obo')
+              const hv   = hAvgs[field.key]
+              return (
+                <tr key={field.key} style={{borderBottom: idx < INPUT_FIELDS.length-1 ? '1px solid #F3F4F6' : 'none'}}
+                  className="hover:bg-gray-50 transition-colors">
+                  <td style={tdL}>
+                    <div style={{fontWeight:600, color:'#111827', fontSize:'13px'}}>{field.label}</div>
+                    <div style={{fontSize:'10px', color:'#9CA3AF', marginTop:'2px'}}>{field.unit}</div>
+                  </td>
+                  {/* VDR Operated */}
+                  <td style={{...tdI, borderLeft:'1px solid #E5E7EB'}}>
+                    <input type="number" step="any" placeholder="--"
+                      value={ariesInputs.vdrCase.op[field.key]}
+                      onChange={e => onChange('vdrCase','op',field.key,e.target.value)}
+                      style={inp('vdrCase','op')}/>
+                  </td>
+                  {/* VDR Non-Op */}
+                  <td style={{...tdI, borderLeft:'1px solid #F3F4F6'}}>
+                    <input type="number" step="any" placeholder="--"
+                      value={ariesInputs.vdrCase.obo[field.key]}
+                      onChange={e => onChange('vdrCase','obo',field.key,e.target.value)}
+                      style={inp('vdrCase','obo')}/>
+                  </td>
+                  {/* My Case Operated */}
+                  <td style={{...tdI, borderLeft:'2px solid #1F3864'}}>
+                    <input type="number" step="any" placeholder="--"
+                      value={ariesInputs.myCase.op[field.key]}
+                      onChange={e => onChange('myCase','op',field.key,e.target.value)}
+                      style={inp('myCase','op')}/>
+                  </td>
+                  {/* My Case Non-Op */}
+                  <td style={{...tdI, borderLeft:'1px solid #F3F4F6'}}>
+                    <input type="number" step="any" placeholder="--"
+                      value={ariesInputs.myCase.obo[field.key]}
+                      onChange={e => onChange('myCase','obo',field.key,e.target.value)}
+                      style={inp('myCase','obo')}/>
+                  </td>
+                  {/* Variance Operated */}
+                  <td style={{...tdV, borderLeft:'1px solid #E5E7EB', color: vColor(field, vOp)}}>
+                    {vOp ? (
+                      <>
+                        <div style={{fontWeight:700}}>{vOp.diff>0?'+':''}{vOp.diff.toFixed(2)}</div>
+                        {vOp.pct!=null && <div style={{fontSize:'10px'}}>{vOp.pct>0?'+':''}{vOp.pct.toFixed(1)}%</div>}
+                      </>
+                    ) : <span style={{color:'#D1D5DB'}}>--</span>}
+                  </td>
+                  {/* Variance Non-Op */}
+                  <td style={{...tdV, borderLeft:'1px solid #F3F4F6', color: vColor(field, vObo)}}>
+                    {vObo ? (
+                      <>
+                        <div style={{fontWeight:700}}>{vObo.diff>0?'+':''}{vObo.diff.toFixed(2)}</div>
+                        {vObo.pct!=null && <div style={{fontSize:'10px'}}>{vObo.pct>0?'+':''}{vObo.pct.toFixed(1)}%</div>}
+                      </>
+                    ) : <span style={{color:'#D1D5DB'}}>--</span>}
+                  </td>
+                  {/* Hist Avg */}
+                  <td style={{...tdH}}>
+                    {hv != null
+                      ? <span style={{fontWeight:700, color:'#374151'}}>{field.fmt(hv)}</span>
+                      : <span style={{color:'#D1D5DB', fontStyle:'italic'}}>{field.histKey===null?'N/A':'--'}</span>}
+                  </td>
+                </tr>
+              )
+            })}
+            {/* GPT placeholder */}
+            <tr style={{opacity:0.45, borderTop:'1px solid #E5E7EB', background:'#F9FAFB'}}>
+              <td style={tdL}>
+                <div style={{fontWeight:600, color:'#6B7280', fontSize:'13px'}}>GPT</div>
+                <div style={{fontSize:'10px', color:'#9CA3AF', marginTop:'2px'}}>Gathering, Processing &amp; Transport</div>
+              </td>
+              {[1,2,3,4,5,6,7].map(i => (
+                <td key={i} style={{padding:'8px 10px', textAlign:'right', borderLeft:'1px solid #E5E7EB'}}>
+                  <span style={{fontSize:'10px', color:'#9CA3AF', fontStyle:'italic'}}>Coming Soon</span>
+                </td>
               ))}
-              <div className={`px-4 py-3 border-l border-gray-100 flex flex-col justify-center ${col}`}>
-                {v ? (
-                  <>
-                    <div className="text-sm font-bold">{v.diff>0?'+':''}{v.diff.toFixed(2)}</div>
-                    {v.pct!=null && <div className="text-xs mt-0.5">{v.pct>0?'+':''}{v.pct.toFixed(1)}%</div>}
-                  </>
-                ) : <span className="text-sm text-gray-300">--</span>}
-              </div>
-              <div className="px-4 py-3 border-l border-gray-100 flex items-center justify-end">
-                {hv != null
-                  ? <span className="text-sm text-gray-700 font-mono font-semibold">{field.fmt(hv)}</span>
-                  : <span className="text-xs text-gray-300">{field.histKey===null?'N/A':'--'}</span>}
-              </div>
-            </div>
-          )
-        })}
-
-        <div style={{display:'grid', gridTemplateColumns:'200px 1fr 1fr 160px 140px', opacity:0.4}} className="border-t border-gray-200 bg-gray-50">
-          <div className="px-4 py-3">
-            <div className="text-sm text-gray-600 font-semibold">GPT</div>
-            <div className="text-xs text-gray-400 mt-0.5">Gathering, Processing &amp; Transport</div>
-          </div>
-          {[0,1,2,3].map(i => (
-            <div key={i} className="px-4 py-3 border-l border-gray-200 flex items-center justify-end">
-              <span className="text-xs text-gray-400 italic" title="GPT will be integrated from a separate file in a future update.">Coming Soon</span>
-            </div>
-          ))}
-        </div>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -643,6 +803,8 @@ function InputsTab({ ariesInputs, setAriesInputs, monthlyRollup }) {
             <p className="text-xs text-gray-500">
               My Case: <span className="font-bold" style={{color:C.myCase}}>red dotted</span> reference lines.
               VDR Case: <span className="font-bold text-gray-500">gray dotted</span> reference lines.
+              Active overlay uses the <strong>Operated</strong> column when viewing Operated wells,
+              <strong> Non-Op</strong> column when viewing Non-Operated.
             </p>
           </div>
         </div>
@@ -789,9 +951,10 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="fixed"      name="Fixed"      fill={C.fixed}     stackId="l"><LabelList dataKey="fixed"      content={segLabel(dlf)}/></Bar>
               <Bar dataKey="var_oil"    name="Var Oil"    fill={C.varOil}    stackId="l"><LabelList dataKey="var_oil"    content={segLabel(dlf)}/></Bar>
               <Bar dataKey="var_water"  name="Var Water"  fill={C.varWater}  stackId="l"><LabelList dataKey="var_water"  content={segLabel(dlf)}/></Bar>
+              <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}  stackId="l"><LabelList dataKey="totalFixed"  content={segLabel(dlf)}/></Bar>
+              <Bar dataKey="gpt"        name="GPT"        fill={C.gpt}       stackId="l"><LabelList dataKey="gpt"        content={segLabel(dlf)}/></Bar>
               <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes} stackId="l">
                 <LabelList dataKey="prod_taxes" content={segLabel(dlf)}/>
                 <LabelList dataKey="totalLOS"   content={topLabel(dlf)}/>
@@ -820,12 +983,32 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Fixed Expense ($M)" miniRows={buildMiniRows(data,'fixed')} miniFmt={fMdol}>
+        <ChartCard title="Fixed &amp; Workover ($M)" miniRows={buildMiniRows(data,'totalFixed')} miniFmt={fMdol}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="fixed" name="Fixed" fill={C.fixed}><LabelList dataKey="fixed" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}><LabelList dataKey="totalFixed" content={topLabel(dlf)}/></Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="GPT ($M)" miniRows={buildMiniRows(data,'gpt')} miniFmt={fMdol}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={CM}>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
+              <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
+              <Bar dataKey="gpt" name="GPT" fill={C.gpt}><LabelList dataKey="gpt" content={topLabel(dlf)}/></Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Midstream Revenue ($M)" miniRows={buildMiniRows(data,'midstream')} miniFmt={fMdol}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={CM}>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
+              <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
+              <Bar dataKey="midstream" name="Midstream" fill={C.midstream}><LabelList dataKey="midstream" content={topLabel(dlf)}/></Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -836,6 +1019,16 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
               <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes}><LabelList dataKey="prod_taxes" content={topLabel(dlf)}/></Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="CAPEX ($M)" miniRows={buildMiniRows(data,'capex')} miniFmt={fMdol}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={CM}>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
+              <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
+              <Bar dataKey="capex" name="CAPEX" fill={C.capex}><LabelList dataKey="capex" content={topLabel(dlf)}/></Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -867,13 +1060,23 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Fixed ($/Well/mo)" miniRows={buildMiniRows(data,'fixedPerWell')} miniFmt={f$}>
+        <ChartCard title="Fixed &amp; Workover ($/Well/mo)" miniRows={buildMiniRows(data,'fixedPerWell')} miniFmt={f$}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${(v/1000).toFixed(1)}K`}/>
               <Tooltip {...TP} formatter={(v,n)=>[f$(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="fixedPerWell" name="Fixed/Well" fill={C.fixed}><LabelList dataKey="fixedPerWell" content={topLabel(v=>`$${(v/1000).toFixed(1)}K`)}/></Bar>
+              <Bar dataKey="fixedPerWell" name="Fixed+Wkover/Well" fill={C.fixed}><LabelList dataKey="fixedPerWell" content={topLabel(v=>`$${(v/1000).toFixed(1)}K`)}/></Bar>
               {refLines(my.fixed, vdr.fixed, f$)}
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="CAPEX ($/Well/mo)" miniRows={buildMiniRows(data,'capexPerWell')} miniFmt={f$}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={CM}>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${(v/1000).toFixed(1)}K`}/>
+              <Tooltip {...TP} formatter={(v,n)=>[f$(v),n]}/><Legend {...LP}/>
+              <Bar dataKey="capexPerWell" name="CAPEX/Well" fill={C.capex}><LabelList dataKey="capexPerWell" content={topLabel(v=>`$${(v/1000).toFixed(1)}K`)}/></Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -962,25 +1165,25 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
 //   'single'         = single bar, uses fill + pk
 const WBW_TYPES = [
   // --- Total Production (BOE) ---
-  { id:'netBOEd',       group:'Total Production',   label:'Net Total (MBoed)',      pk:'netBOEd',         chartType:'boeStackD',      fmt:n=>fMBd(n)+' MBoed',  tableFmt:n=>fMBd(n),          tableLabel:'Net Production (MBoed)'     },
-  { id:'netBOEtot',     group:'Total Production',   label:'Net Total (MBoe/mo)',    pk:'netBOE',          chartType:'boeStackM',      fmt:n=>fMBd(n)+' MBoe',   tableFmt:n=>fMBd(n),          tableLabel:'Net Production (MBoe/mo)'   },
-  { id:'grossBOEd',     group:'Total Production',   label:'Gross Total (MBoed)',    pk:'grossBOEd',       chartType:'grossBoeStackD', fmt:n=>fMBd(n)+' MBoed',  tableFmt:n=>fMBd(n),          tableLabel:'Gross Production (MBoed)'   },
-  { id:'grossBOEtot',   group:'Total Production',   label:'Gross Total (MBoe/mo)', pk:'grossBOE',        chartType:'grossBoeStackM', fmt:n=>fMBd(n)+' MBoe',   tableFmt:n=>fMBd(n),          tableLabel:'Gross Production (MBoe/mo)' },
+  { id:'netBOEd',       group:'Total Production',   label:'Net Total (Boed)',       pk:'netBOEd',         chartType:'boeStackD',      fmt:n=>fBoed(n)+' Boed',   tableFmt:fBoed,          tableLabel:'Net Production (Boed)'      },
+  { id:'netBOEtot',     group:'Total Production',   label:'Net Total (BOE/mo)',     pk:'netBOE',          chartType:'boeStackM',      fmt:n=>fBoed(n)+' BOE',    tableFmt:fBoed,          tableLabel:'Net Production (BOE/mo)'    },
+  { id:'grossBOEd',     group:'Total Production',   label:'Gross Total (Boed)',     pk:'grossBOEd',       chartType:'grossBoeStackD', fmt:n=>fBoed(n)+' Boed',   tableFmt:fBoed,          tableLabel:'Gross Production (Boed)'    },
+  { id:'grossBOEtot',   group:'Total Production',   label:'Gross Total (BOE/mo)',   pk:'grossBOE',        chartType:'grossBoeStackM', fmt:n=>fBoed(n)+' BOE',    tableFmt:fBoed,          tableLabel:'Gross Production (BOE/mo)'  },
   // --- Oil & NGL Production ---
-  { id:'netOild',       group:'Oil & NGL',          label:'Net Oil (MBpd)',         pk:'netOild',         chartType:'single', fill:C.oil,      fmt:n=>fMBd(n)+' MBpd',   tableFmt:n=>fMBd(n), tableLabel:'Net Oil (MBpd)'         },
-  { id:'netOiltot',     group:'Oil & NGL',          label:'Net Oil (MBbl/mo)',      pk:'oil_vol',         chartType:'single', fill:C.oil,      fmt:n=>fMBd(n)+' MBbl',   tableFmt:n=>fMBd(n), tableLabel:'Net Oil (MBbl/mo)'      },
-  { id:'netNGLd',       group:'Oil & NGL',          label:'Net NGL (MBpd)',         pk:'netNGLd',         chartType:'single', fill:C.ngl,      fmt:n=>fMBd(n)+' MBpd',   tableFmt:n=>fMBd(n), tableLabel:'Net NGL (MBpd)'         },
-  { id:'netNGLtot',     group:'Oil & NGL',          label:'Net NGL (MBbl/mo)',      pk:'ngl_vol',         chartType:'single', fill:C.ngl,      fmt:n=>fMBd(n)+' MBbl',   tableFmt:n=>fMBd(n), tableLabel:'Net NGL (MBbl/mo)'      },
-  { id:'grossOild',     group:'Oil & NGL',          label:'Gross Oil (MBpd)',       pk:'grossOild',       chartType:'single', fill:C.oil,      fmt:n=>fMBd(n)+' MBpd',   tableFmt:n=>fMBd(n), tableLabel:'Gross Oil (MBpd)'       },
-  { id:'grossOiltot',   group:'Oil & NGL',          label:'Gross Oil (MBbl/mo)',    pk:'gross_oil',       chartType:'single', fill:C.oil,      fmt:n=>fMBd(n)+' MBbl',   tableFmt:n=>fMBd(n), tableLabel:'Gross Oil (MBbl/mo)'    },
-  { id:'grossNGLd',     group:'Oil & NGL',          label:'Gross NGL (MBpd)',       pk:'grossNGLd',       chartType:'single', fill:C.ngl,      fmt:n=>fMBd(n)+' MBpd',   tableFmt:n=>fMBd(n), tableLabel:'Gross NGL (MBpd)'       },
-  { id:'grossNGLtot',   group:'Oil & NGL',          label:'Gross NGL (MBbl/mo)',    pk:'gross_ngl',       chartType:'single', fill:C.ngl,      fmt:n=>fMBd(n)+' MBbl',   tableFmt:n=>fMBd(n), tableLabel:'Gross NGL (MBbl/mo)'    },
+  { id:'netOild',       group:'Oil & NGL',          label:'Net Oil (Bpd)',          pk:'netOild',         chartType:'single', fill:C.oil,      fmt:n=>fBoed(n)+' Bpd',    tableFmt:fBoed,  tableLabel:'Net Oil (Bpd)'          },
+  { id:'netOiltot',     group:'Oil & NGL',          label:'Net Oil (Bbl/mo)',       pk:'oil_vol',         chartType:'single', fill:C.oil,      fmt:n=>fBoed(n)+' Bbl',    tableFmt:fBoed,  tableLabel:'Net Oil (Bbl/mo)'       },
+  { id:'netNGLd',       group:'Oil & NGL',          label:'Net NGL (Bpd)',          pk:'netNGLd',         chartType:'single', fill:C.ngl,      fmt:n=>fBoed(n)+' Bpd',    tableFmt:fBoed,  tableLabel:'Net NGL (Bpd)'          },
+  { id:'netNGLtot',     group:'Oil & NGL',          label:'Net NGL (Bbl/mo)',       pk:'ngl_vol',         chartType:'single', fill:C.ngl,      fmt:n=>fBoed(n)+' Bbl',    tableFmt:fBoed,  tableLabel:'Net NGL (Bbl/mo)'       },
+  { id:'grossOild',     group:'Oil & NGL',          label:'Gross Oil (Bpd)',        pk:'grossOild',       chartType:'single', fill:C.oil,      fmt:n=>fBoed(n)+' Bpd',    tableFmt:fBoed,  tableLabel:'Gross Oil (Bpd)'        },
+  { id:'grossOiltot',   group:'Oil & NGL',          label:'Gross Oil (Bbl/mo)',     pk:'gross_oil',       chartType:'single', fill:C.oil,      fmt:n=>fBoed(n)+' Bbl',    tableFmt:fBoed,  tableLabel:'Gross Oil (Bbl/mo)'     },
+  { id:'grossNGLd',     group:'Oil & NGL',          label:'Gross NGL (Bpd)',        pk:'grossNGLd',       chartType:'single', fill:C.ngl,      fmt:n=>fBoed(n)+' Bpd',    tableFmt:fBoed,  tableLabel:'Gross NGL (Bpd)'        },
+  { id:'grossNGLtot',   group:'Oil & NGL',          label:'Gross NGL (Bbl/mo)',     pk:'gross_ngl',       chartType:'single', fill:C.ngl,      fmt:n=>fBoed(n)+' Bbl',    tableFmt:fBoed,  tableLabel:'Gross NGL (Bbl/mo)'     },
   // --- Gas Production ---
-  { id:'netGasd',       group:'Gas Production',     label:'Net Gas (MMcfd)',        pk:'netGasd',         chartType:'single', fill:C.gas,      fmt:n=>fMMcfd(n)+' MMcfd', tableFmt:n=>fMMcfd(n), tableLabel:'Net Gas (MMcfd)'      },
-  { id:'netGastot',     group:'Gas Production',     label:'Net Gas (MMcf/mo)',      pk:'gas_vol',         chartType:'single', fill:C.gas,      fmt:n=>fMMcfd(n)+' MMcf',  tableFmt:n=>fMMcfd(n), tableLabel:'Net Gas (MMcf/mo)'    },
-  { id:'grossGasd',     group:'Gas Production',     label:'Gross Gas (MMcfd)',      pk:'grossGasd',       chartType:'single', fill:C.gas,      fmt:n=>fMMcfd(n)+' MMcfd', tableFmt:n=>fMMcfd(n), tableLabel:'Gross Gas (MMcfd)'    },
-  { id:'grossGastot',   group:'Gas Production',     label:'Gross Gas (MMcf/mo)',    pk:'gross_gas',       chartType:'single', fill:C.gas,      fmt:n=>fMMcfd(n)+' MMcf',  tableFmt:n=>fMMcfd(n), tableLabel:'Gross Gas (MMcf/mo)'  },
-  // --- Costs: $M ---
+  { id:'netGasd',       group:'Gas Production',     label:'Net Gas (Mcfd)',         pk:'netGasd',         chartType:'single', fill:C.gas,      fmt:n=>fMcfd(n)+' Mcfd',   tableFmt:fMcfd,  tableLabel:'Net Gas (Mcfd)'         },
+  { id:'netGastot',     group:'Gas Production',     label:'Net Gas (Mcf/mo)',       pk:'gas_vol',         chartType:'single', fill:C.gas,      fmt:n=>fMcfd(n)+' Mcf',    tableFmt:fMcfd,  tableLabel:'Net Gas (Mcf/mo)'       },
+  { id:'grossGasd',     group:'Gas Production',     label:'Gross Gas (Mcfd)',       pk:'grossGasd',       chartType:'single', fill:C.gas,      fmt:n=>fMcfd(n)+' Mcfd',   tableFmt:fMcfd,  tableLabel:'Gross Gas (Mcfd)'       },
+  { id:'grossGastot',   group:'Gas Production',     label:'Gross Gas (Mcf/mo)',     pk:'gross_gas',       chartType:'single', fill:C.gas,      fmt:n=>fMcfd(n)+' Mcf',    tableFmt:fMcfd,  tableLabel:'Gross Gas (Mcf/mo)'     },
+  // --- Costs ---
   { id:'totalLOSm',     group:'Costs ($M)',         label:'Total LOS ($M)',         pk:'totalLOS',        chartType:'costStack',      fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Total LOS ($M)'         },
   { id:'costPerBOE',    group:'Costs ($M)',         label:'LOS ($/Boe)',            pk:'costPerBOE',      chartType:'single', fill:'#C55A11', fmt:fB, tableFmt:n=>n.toFixed(2), tableLabel:'LOS ($/Boe)'           },
   { id:'varOilm',       group:'Costs ($M)',         label:'Var Oil Exp ($M)',       pk:'var_oil',         chartType:'single', fill:C.varOil,  fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Var Oil Exp ($M)'   },
@@ -996,6 +1199,9 @@ const WBW_TYPES = [
   // --- Production Taxes ---
   { id:'prodTaxm',      group:'Taxes',             label:'Prod Taxes ($M)',        pk:'prod_taxes',      chartType:'single', fill:'#C55A11', fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Prod Taxes ($M)'    },
   { id:'prodTaxPct',    group:'Taxes',             label:'Prod Tax (% Rev)',       pk:'prodTaxPct',      chartType:'single', fill:'#C55A11', fmt:fP, tableFmt:n=>n.toFixed(2), tableLabel:'Prod Tax (% Revenue)'         },
+  // --- Midstream ---
+  { id:'midstreamm',    group:'Midstream',         label:'Midstream Rev ($M)',     pk:'midstream',       chartType:'single', fill:C.midstream, fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(3), tableLabel:'Midstream Rev ($M)' },
+  { id:'midstreamBOE',  group:'Midstream',         label:'Midstream ($/Boe)',      pk:'midstreamPerBOE', chartType:'single', fill:C.midstream, fmt:fB,    tableFmt:n=>n.toFixed(3), tableLabel:'Midstream ($/Boe)'          },
 ]
 
 const WAP = { tick:{ fill:'#374151', fontSize:9 }, axisLine:{ stroke:'#D1D5DB' }, tickLine:{ stroke:'#D1D5DB' } }
@@ -1008,14 +1214,14 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
     varOil:  parseFloat(myCase.varOilPerBOE)       || null,
     prodTax: parseFloat(myCase.prodTaxPct)          || null,
   }
-  const base = { data, width, height, margin: WCM }
+  const base = { data, width, height, margin: WCM, maxBarSize: 80 }
   const yD = yDomain ? { domain: [0, yDomain] } : {}
   const ct = typeDef.chartType
 
   if (ct === 'boeStackD') {
-    const sf = n => (n/1000).toFixed(1), tf = n => (n/1000).toFixed(1)
+    const sf = n => n.toFixed(1), tf = n => n.toFixed(1)
     return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={sf}/>
-      <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBoed',n]}/>
+      <Tooltip {...TP} formatter={(v,n)=>[fBoed(v)+' Boed',n]}/>
       <Bar dataKey="netOild" name="Oil" fill={C.oil} stackId="b"><LabelList dataKey="netOild" content={segLabel(sf)}/></Bar>
       <Bar dataKey="netNGLd" name="NGL" fill={C.ngl} stackId="b"><LabelList dataKey="netNGLd" content={segLabel(sf)}/></Bar>
       <Bar dataKey="netGasBOEd" name="Gas" fill={C.gas} stackId="b">
@@ -1025,9 +1231,9 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
     </BarChart>
   }
   if (ct === 'boeStackM') {
-    const sf = n => (n/1000).toFixed(1), tf = n => (n/1000).toFixed(1)
+    const sf = n => n.toFixed(0), tf = n => n.toFixed(0)
     return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={sf}/>
-      <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBoe',n]}/>
+      <Tooltip {...TP} formatter={(v,n)=>[fBoed(v)+' BOE',n]}/>
       <Bar dataKey="oil_vol" name="Oil" fill={C.oil} stackId="b"><LabelList dataKey="oil_vol" content={segLabel(sf)}/></Bar>
       <Bar dataKey="ngl_vol" name="NGL" fill={C.ngl} stackId="b"><LabelList dataKey="ngl_vol" content={segLabel(sf)}/></Bar>
       <Bar dataKey="netGasBOE" name="Gas" fill={C.gas} stackId="b">
@@ -1037,9 +1243,9 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
     </BarChart>
   }
   if (ct === 'grossBoeStackD') {
-    const sf = n => (n/1000).toFixed(1), tf = n => (n/1000).toFixed(1)
+    const sf = n => n.toFixed(1), tf = n => n.toFixed(1)
     return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={sf}/>
-      <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBoed',n]}/>
+      <Tooltip {...TP} formatter={(v,n)=>[fBoed(v)+' Boed',n]}/>
       <Bar dataKey="grossOild" name="Oil" fill={C.oil} stackId="b"><LabelList dataKey="grossOild" content={segLabel(sf)}/></Bar>
       <Bar dataKey="grossNGLd" name="NGL" fill={C.ngl} stackId="b"><LabelList dataKey="grossNGLd" content={segLabel(sf)}/></Bar>
       <Bar dataKey="grossGasBOEd" name="Gas" fill={C.gas} stackId="b">
@@ -1049,9 +1255,9 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
     </BarChart>
   }
   if (ct === 'grossBoeStackM') {
-    const sf = n => (n/1000).toFixed(1), tf = n => (n/1000).toFixed(1)
+    const sf = n => n.toFixed(0), tf = n => n.toFixed(0)
     return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={sf}/>
-      <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBoe',n]}/>
+      <Tooltip {...TP} formatter={(v,n)=>[fBoed(v)+' BOE',n]}/>
       <Bar dataKey="gross_oil" name="Oil" fill={C.oil} stackId="b"><LabelList dataKey="gross_oil" content={segLabel(sf)}/></Bar>
       <Bar dataKey="gross_ngl" name="NGL" fill={C.ngl} stackId="b"><LabelList dataKey="gross_ngl" content={segLabel(sf)}/></Bar>
       <Bar dataKey="grossGasBOE" name="Gas" fill={C.gas} stackId="b">
@@ -1064,10 +1270,11 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
     const sf = n => `$${(n/1e6).toFixed(1)}M`, tf = n => `$${(n/1e6).toFixed(1)}M`
     return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={n=>`$${(n/1e6).toFixed(1)}M`}/>
       <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/>
-      <Bar dataKey="fixed"      name="Fixed"   fill={C.fixed}     stackId="c"><LabelList dataKey="fixed"      content={segLabel(sf)}/></Bar>
-      <Bar dataKey="var_oil"    name="Var Oil" fill={C.varOil}    stackId="c"><LabelList dataKey="var_oil"    content={segLabel(sf)}/></Bar>
-      <Bar dataKey="var_water"  name="Water"   fill={C.varWater}  stackId="c"><LabelList dataKey="var_water"  content={segLabel(sf)}/></Bar>
-      <Bar dataKey="prod_taxes" name="Taxes"   fill={C.prodTaxes} stackId="c">
+      <Bar dataKey="var_oil"    name="Var Oil"     fill={C.varOil}    stackId="c"><LabelList dataKey="var_oil"    content={segLabel(sf)}/></Bar>
+      <Bar dataKey="var_water"  name="Water"       fill={C.varWater}  stackId="c"><LabelList dataKey="var_water"  content={segLabel(sf)}/></Bar>
+      <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}    stackId="c"><LabelList dataKey="totalFixed" content={segLabel(sf)}/></Bar>
+      <Bar dataKey="gpt"        name="GPT"         fill={C.gpt}       stackId="c"><LabelList dataKey="gpt"        content={segLabel(sf)}/></Bar>
+      <Bar dataKey="prod_taxes" name="Taxes"       fill={C.prodTaxes} stackId="c">
         <LabelList dataKey="prod_taxes" content={segLabel(sf)}/>
         <LabelList dataKey="totalLOS"   content={topLabel(tf)}/>
       </Bar>
@@ -1077,10 +1284,11 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const { pk, fill } = typeDef
   const isMM  = ['gas_vol','gross_gas','netGasd','grossGasd'].includes(pk)
   const isBoe = ['netOild','netNGLd','grossOild','grossNGLd','oil_vol','ngl_vol','gross_oil','gross_ngl','netBOEd','netBOE','grossBOEd','grossBOE'].includes(pk)
-  const isDol = ['var_oil','var_water','fixed','prod_taxes','totalLOS'].includes(pk)
+  const isDol = ['var_oil','var_water','fixed','totalFixed','gpt','workover','prod_taxes','capex','totalLOS','assetFCF'].includes(pk)
   const isPct = pk === 'prodTaxPct'
   const isGas = pk === 'realizedGas'
-  const axFmt = isMM ? n=>(n/1000).toFixed(2) : isBoe ? n=>(n/1000).toFixed(2) : isDol ? n=>`$${(n/1e6).toFixed(1)}M` : isPct ? n=>`${n.toFixed(1)}%` : isGas ? n=>`$${n.toFixed(3)}` : n=>`$${n.toFixed(1)}`
+  // Raw units for individual wells: Boed/Bpd for BOE/oil/NGL; Mcfd for gas
+  const axFmt = isMM ? n=>n.toFixed(1) : isBoe ? n=>n.toFixed(1) : isDol ? n=>`$${(n/1e6).toFixed(1)}M` : isPct ? n=>`${n.toFixed(1)}%` : isGas ? n=>`$${n.toFixed(3)}` : n=>`$${n.toFixed(1)}`
   const ttFmt = typeDef.fmt
   const myRef = pk==='varOilPerBOE'&&my.varOil ? <ReferenceLine y={my.varOil} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='fixedPerWell'&&my.fixed   ? <ReferenceLine y={my.fixed}  stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
@@ -1156,9 +1364,9 @@ const WellCard = memo(function WellCard({ well, typeDef, ariesInputs, pctOfTotal
 
 const SORT_OPTIONS = [
   { id:'default',   label:'Default (Name)' },
-  { id:'oilVol',    label:'Oil Vol (MBpd)' },
-  { id:'gasVol',    label:'Gas Vol (MMcfd)' },
-  { id:'totalVol',  label:'Total BOE (MBoed)' },
+  { id:'oilVol',    label:'Oil Vol (Bpd)' },
+  { id:'gasVol',    label:'Gas Vol (Mcfd)' },
+  { id:'totalVol',  label:'Total BOE (Boed)' },
 ]
 
 // Group WBW_TYPES by group label for the selector UI
@@ -1284,125 +1492,374 @@ function WellByWellTab({ wellData, ariesInputs, typeId, setTypeId, sortId, setSo
   )
 }
 
-// --- WELL BY WELL TABLE TAB --------------------------------------------------
+// --- LOS TABLE TAB ------------------------------------------------------------
 
-function WellByWellTableTab({ wellData, typeId, setTypeId, sortId, setSortId }) {
-  const typeDef = WBW_TYPES.find(t => t.id === typeId) || WBW_TYPES[0]
+function buildLOSCatData(rawRows, isGross) {
+  const mMap = {}, catMap = {}
+  for (const r of rawRows) {
+    if (r.bucket === 'ignore') continue          // excluded LOS categories (internal reclasses)
+    const los = r.los || r.cat || null
+    if (!los) continue
+    if (!mMap[r.monthKey]) mMap[r.monthKey] = { key: r.monthKey, disp: r.monthDisp, date: r.date }
+    if (!catMap[los]) catMap[los] = { bucket: r.bucket, months: {} }
+    if (!catMap[los].months[r.monthKey]) catMap[los].months[r.monthKey] = { amount: 0, volume: 0 }
+    const d = catMap[los].months[r.monthKey]
+    const rawAmt = isGross ? r.grossAmount : r.netAmount
+    const rawVol = isGross ? r.grossVolume : r.netVolume
+    // Revenue rows (oil/gas/ngl) stored as NEGATIVE → negate for positive display.
+    // Cost/tax/GPT rows stored as POSITIVE; credit/reversal rows are NEGATIVE and must
+    // reduce totals, so we add rawAmt directly (no Math.abs) for non-revenue buckets.
+    const isRev = r.bucket === 'oil' || r.bucket === 'gas' || r.bucket === 'ngl'
+    d.amount += isRev ? -rawAmt : rawAmt
+    d.volume += r.bucket === 'ngl' ? Math.abs(rawVol) / 42 : Math.abs(rawVol)
+  }
+  return { months: Object.values(mMap).sort((a, b) => a.key.localeCompare(b.key)), catMap }
+}
 
-  const sorted = useMemo(() => {
-    let arr = [...wellData]
-    if (sortId === 'oilVol')   arr.sort((a,b) => getLastMonthVal(b,'netOild') - getLastMonthVal(a,'netOild'))
-    if (sortId === 'gasVol')   arr.sort((a,b) => getLastMonthVal(b,'netGasd') - getLastMonthVal(a,'netGasd'))
-    if (sortId === 'totalVol') arr.sort((a,b) => getLastMonthVal(b,'netBOEd') - getLastMonthVal(a,'netBOEd'))
-    return arr
-  }, [wellData, sortId])
+function LOSTableTab({ rawRows, wellData }) {
+  const [selWell,  setSelWell]  = useState('__all__')
+  const [mode,     setMode]     = useState('net')
+  const [perBoe,   setPerBoe]   = useState(false)
+  const [dateFrom, setDateFrom] = useState('')   // monthKey lower bound ('' = no filter)
+  const [dateTo,   setDateTo]   = useState('')   // monthKey upper bound ('' = no filter)
 
-  const months = useMemo(() => {
-    let best = []
-    sorted.forEach(w => { if (w.monthlyData.length > best.length) best = w.monthlyData })
-    return best.map(m => m.monthDisp)
-  }, [sorted])
+  const wellNames = useMemo(() => (wellData || []).map(w => w.wellName).sort(), [wellData])
 
-  const lookup = useMemo(() => {
-    const map = {}
-    sorted.forEach(w => {
-      map[w.wellName] = {}
-      w.monthlyData.forEach(m => { map[w.wellName][m.monthDisp] = m[typeDef.pk] })
-    })
-    return map
-  }, [sorted, typeDef.pk])
+  const filteredRows = useMemo(() => {
+    if (!rawRows) return []
+    return selWell === '__all__' ? rawRows : rawRows.filter(r => r.wellName === selWell)
+  }, [rawRows, selWell])
 
-  const totals = useMemo(() => {
-    const row = {}
-    months.forEach(mo => {
-      let sum = 0, cnt = 0
-      sorted.forEach(w => {
-        const v = lookup[w.wellName]?.[mo]
-        if (v != null && isFinite(v)) { sum += v; cnt++ }
-      })
-      row[mo] = cnt > 0 ? sum : null
-    })
-    return row
-  }, [months, sorted, lookup])
-
-  const portfTotalAvg = safeAvg(months.map(mo => ({ v: totals[mo] })), 'v')
-
-  if (!wellData || !wellData.length) return (
-    <div className="flex items-center justify-center h-64 text-gray-400 text-sm">No data loaded -- upload a CSV file to view tables.</div>
+  const { months, catMap } = useMemo(
+    () => buildLOSCatData(filteredRows, mode === 'gross'),
+    [filteredRows, mode]
   )
 
-  const thS  = { padding:'8px 10px', textAlign:'right', fontWeight:700, whiteSpace:'nowrap', borderRight:'1px solid #2E4A7A', color:'white', fontSize:'11px' }
-  const th1S = { ...thS, position:'sticky', left:0, background:'#1F3864', zIndex:2, textAlign:'left', minWidth:'170px' }
-  const thAvg = { ...thS, borderLeft:'2px solid #2E4A7A', borderRight:'none', minWidth:'76px' }
+  // Months visible in the table after user date-range filter
+  const visibleMonths = useMemo(() => {
+    let ms = months
+    if (dateFrom) ms = ms.filter(m => m.key >= dateFrom)
+    if (dateTo)   ms = ms.filter(m => m.key <= dateTo)
+    return ms
+  }, [months, dateFrom, dateTo])
+
+  // LTM = last 12 of the visible months (used for the trailing average column)
+  const ltmMonths = useMemo(() => visibleMonths.slice(-12), [visibleMonths])
+
+  if (!rawRows || !rawRows.length) return (
+    <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+      No data loaded -- upload a CSV to view the LOS table.
+    </div>
+  )
+
+  // Section groupings — structured to match financial statement format (see image reference)
+  // Recurring LOE: named overhead/insurance items that sit above the Direct LOE running subtotal
+  const RECURRING_NAMES = new Set(['Overhead', 'LOE', 'Insurance'])
+  const KNOWN_BUCKETS   = new Set(['oil','gas','ngl','variable_oil','variable_water','fixed','workover','gpt','midstream','prod_taxes','capex'])
+  const byCat = bucket => Object.entries(catMap)
+    .filter(([, v]) => v.bucket === bucket)
+    .sort(([a], [b]) => a.localeCompare(b))
+  const oilCats  = byCat('oil')
+  const gasCats  = byCat('gas')
+  const nglCats  = byCat('ngl')
+  // Direct LOE: variable oil + variable water + fixed, excluding named recurring items
+  const directLoeCats = Object.entries(catMap)
+    .filter(([los, v]) => ['variable_oil','variable_water','fixed'].includes(v.bucket) && !RECURRING_NAMES.has(los))
+    .sort(([a], [b]) => a.localeCompare(b))
+  // Recurring LOE: overhead, insurance, and other named recurring items
+  const recurringLoeCats = Object.entries(catMap)
+    .filter(([los]) => RECURRING_NAMES.has(los))
+    .sort(([a], [b]) => a.localeCompare(b))
+  // Other OpEx split into ordered sub-groups: workover → midstream → GPT → prod_taxes
+  const workoverCats  = byCat('workover')
+  const midstreamCats = byCat('midstream')
+  const gptCats       = byCat('gpt')
+  const prodTaxCats   = byCat('prod_taxes')
+  const capexCats     = byCat('capex')
+  // Truly unmapped: null/unknown bucket rows (catch-all)
+  const unknownCats = Object.entries(catMap)
+    .filter(([los, v]) => !KNOWN_BUCKETS.has(v.bucket) && !RECURRING_NAMES.has(los))
+    .sort(([a], [b]) => a.localeCompare(b))
+
+  // Aggregation helpers
+  const sumAmt = (cats, mk) => cats.reduce((s, [, v]) => s + (v.months[mk]?.amount || 0), 0)
+  const sumVol = (cats, mk) => cats.reduce((s, [, v]) => s + (v.months[mk]?.volume || 0), 0)
+  const gasVol   = mk => sumVol(gasCats, mk)
+  const oilVol   = mk => sumVol(oilCats, mk)
+  const nglVol   = mk => sumVol(nglCats, mk)
+  const totalBOE = mk => oilVol(mk) + nglVol(mk) + gasVol(mk) / GAS_BOE
+  const boed     = mk => { const mo = months.find(m => m.key === mk); return mo ? totalBOE(mk) / daysInMonth(mo.date) : 0 }
+  const gasRev   = mk => sumAmt(gasCats, mk)
+  const oilRev   = mk => sumAmt(oilCats, mk)
+  const nglRev   = mk => sumAmt(nglCats, mk)
+  const totalRev = mk => gasRev(mk) + oilRev(mk) + nglRev(mk)
+  // Cumulative section totals — each total rolls up prior sections
+  const directLoeTot    = mk => sumAmt(directLoeCats, mk)
+  const recurringLoeTot = mk => directLoeTot(mk) + sumAmt(recurringLoeCats, mk)
+  const midstreamTot    = mk => sumAmt(midstreamCats, mk)
+  // totalOpex includes midstream between GPT and prod taxes (credits reduce operating expenses)
+  const totalOpex       = mk => recurringLoeTot(mk) + sumAmt(workoverCats, mk) + midstreamTot(mk) + sumAmt(gptCats, mk) + sumAmt(prodTaxCats, mk)
+  const capexTot        = mk => sumAmt(capexCats, mk)
+  const unknownTot      = mk => sumAmt(unknownCats, mk)
+  const opMargin        = mk => totalRev(mk) - totalOpex(mk)
+  const assetFCF        = mk => opMargin(mk) - capexTot(mk) - unknownTot(mk)
+
+  // LTM avg — over the last 12 visible months, skipping zeroes (works for margin too)
+  const avg = fn => {
+    const vals = ltmMonths.map(m => fn(m.key)).filter(v => v != null && isFinite(v) && v !== 0)
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
+  }
+
+  // $/BOE wrapper — when perBoe is on, divides a dollar-amount fn by that month's BOE
+  const bw  = fn => perBoe ? mk => { const b = totalBOE(mk); return b > 0 ? fn(mk) / b : 0 } : fn
+
+  // Formatters — fDol switches between total $ and $/BOE based on toggle (unit shown in title, not per-cell)
+  const fV   = n => n > 0 ? Math.round(n).toLocaleString('en-US') : '--'
+  const f$   = n => n > 0 ? '$' + Math.round(n).toLocaleString('en-US') : '--'
+  const fBd  = n => n > 0 ? n.toFixed(2) : '--'
+  // fM handles both positive and negative amounts — negatives render as ($X,XXX) (accounting credit style).
+  // fDol is an alias for fM so that any credit or reversal in any LOS row is visible rather than '--'.
+  const fM   = n => {
+    if (!n || !isFinite(n)) return '--'
+    if (perBoe) return `$${Math.abs(n).toFixed(2)}`
+    const abs = Math.round(Math.abs(n)).toLocaleString('en-US')
+    return n < 0 ? `($${abs})` : `$${abs}`
+  }
+  const fDol = fM
+
+  // Table cell style constants
+  const sH  = { background:'#1F3864', color:'white', fontWeight:700, fontSize:'11px', padding:'6px 10px', textAlign:'right', whiteSpace:'nowrap', borderRight:'1px solid #2E4A7A' }
+  const sH1 = { ...sH, textAlign:'left', position:'sticky', left:0, zIndex:2, minWidth:'220px' }
+  const sTd = { padding:'4px 8px', textAlign:'right', fontSize:'11px', whiteSpace:'nowrap', borderRight:'1px solid #F3F4F6', color:'#374151' }
+  const sL1 = { ...sTd, textAlign:'left', position:'sticky', left:0, zIndex:1, borderRight:'1px solid #E5E7EB', minWidth:'220px', paddingLeft:'20px', color:'#111827' }
+  const sSb = { padding:'5px 8px', textAlign:'right', fontSize:'11px', fontWeight:700, whiteSpace:'nowrap', background:'#EBF0F8', color:'#1F3864', borderRight:'1px solid #C5D5E8' }
+  const sSb1= { ...sSb, textAlign:'left', position:'sticky', left:0, zIndex:1, paddingLeft:'10px', minWidth:'220px' }
+  const sTt = { padding:'5px 8px', textAlign:'right', fontSize:'11px', fontWeight:700, whiteSpace:'nowrap', background:'#1F3864', color:'white', borderRight:'1px solid #2E4A7A' }
+  const sTt1= { ...sTt, textAlign:'left', position:'sticky', left:0, zIndex:1, paddingLeft:'10px', minWidth:'220px' }
+  const sGn = { padding:'5px 8px', textAlign:'right', fontSize:'11px', fontWeight:700, whiteSpace:'nowrap', background:'#548235', color:'white', borderRight:'1px solid #3e6126' }
+  const sGn1= { ...sGn, textAlign:'left', position:'sticky', left:0, zIndex:1, paddingLeft:'10px', minWidth:'220px' }
+  const sAvg  = { borderLeft:'5px solid #CBD5E1', borderRight:'none' }
+  const sAvgS = { borderLeft:'5px solid #93B4D4', borderRight:'none' }
+  const sAvgT = { borderLeft:'5px solid #162C54', borderRight:'none' }
+  const sAvgG = { borderLeft:'5px solid #2A5220', borderRight:'none' }
+  const sSpc  = { height:'5px', background:'#F1F5F9' }
+
+  let ri = 0
+  const alt = () => { ri++; return ri % 2 === 0 ? '#F9FAFB' : '#FFFFFF' }
+
+  // Section header style — label only, no background, no date columns
+  const sSecLabel = {
+    position:'sticky', left:0, zIndex:1,
+    padding:'10px 10px 3px', fontWeight:700, fontSize:'11px',
+    color:'#111827', background:'white',
+    borderRight:'1px solid #E5E7EB', minWidth:'220px', whiteSpace:'nowrap',
+  }
+  const sSecCell = { background:'white', borderRight:'1px solid #F3F4F6', padding:0 }
+
+  // Row render helpers — plain functions returning JSX (not React components)
+  const rHdr = label => (
+    <tr key={'h-'+label}>
+      <td style={sSecLabel}>{label}</td>
+      {visibleMonths.map(m => <td key={m.key} style={sSecCell}/>)}
+      <td style={{...sSecCell, borderRight:'none'}}/>
+    </tr>
+  )
+
+  const rRow = (label, fn, fmt, opts={}) => {
+    const bg = opts.bg !== undefined ? opts.bg : alt()
+    const a  = avg(fn)
+    return (
+      <tr key={'r-'+label} style={{background:bg}}>
+        <td style={{...sL1, background:bg, paddingLeft: opts.ni ? '10px' : '20px', fontWeight: opts.bold ? 700 : 400}}>{label}</td>
+        {visibleMonths.map(m => {
+          const v = fn(m.key)
+          return <td key={m.key} style={{...sTd, background:bg, fontWeight: opts.bold ? 700 : 400}}>{fmt(v)}</td>
+        })}
+        <td style={{...sTd, ...sAvg, background:bg, fontWeight:700, color:'#1F3864'}}>{a != null ? fmt(a) : '--'}</td>
+      </tr>
+    )
+  }
+
+  const rSub = (label, fn, fmt) => {
+    const a = avg(fn)
+    return (
+      <tr key={'s-'+label}>
+        <td style={sSb1}>{label}</td>
+        {visibleMonths.map(m => <td key={m.key} style={sSb}>{fmt(fn(m.key))}</td>)}
+        <td style={{...sSb, ...sAvgS}}>{a != null ? fmt(a) : '--'}</td>
+      </tr>
+    )
+  }
+
+  const rTot = (label, fn, fmt) => {
+    const a = avg(fn)
+    return (
+      <tr key={'t-'+label}>
+        <td style={sTt1}>{label}</td>
+        {visibleMonths.map(m => <td key={m.key} style={sTt}>{fmt(fn(m.key))}</td>)}
+        <td style={{...sTt, ...sAvgT}}>{a != null ? fmt(a) : '--'}</td>
+      </tr>
+    )
+  }
+
+  const rMargin = (label, fn, fmt) => {
+    const a = avg(fn)
+    return (
+      <tr key={'m-'+label}>
+        <td style={sGn1}>{label}</td>
+        {visibleMonths.map(m => <td key={m.key} style={sGn}>{fmt(fn(m.key))}</td>)}
+        <td style={{...sGn, ...sAvgG}}>{a != null ? fmt(a) : '--'}</td>
+      </tr>
+    )
+  }
+
+  const rSpc = k => (
+    <tr key={'sp-'+k} style={sSpc}>
+      <td style={{...sSpc, position:'sticky', left:0}}/>
+      {visibleMonths.map(m => <td key={m.key} style={sSpc}/>)}
+      <td style={sSpc}/>
+    </tr>
+  )
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+
+      {/* Controls */}
+      <div className="space-y-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">Well by Well Tables</h2>
-          <p className="text-xs text-gray-500 mt-1">{sorted.length} wells | {months.length} months</p>
+          <h2 className="text-lg font-bold text-gray-900">LOS Statement {perBoe ? '($/BOE)' : '($)'}</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            {selWell === '__all__' ? `${wellNames.length} wells — Portfolio Total` : selWell} | {visibleMonths.length}{visibleMonths.length < months.length ? ` of ${months.length}` : ''} months | LTM Avg = last {ltmMonths.length} months
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500 font-semibold">Sort:</label>
-          <select value={sortId} onChange={e => setSortId(e.target.value)}
-            className="px-3 py-1.5 bg-white border-2 border-[#1F3864] rounded text-xs text-[#1F3864] font-bold outline-none cursor-pointer">
-            {SORT_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-gray-500 font-semibold whitespace-nowrap">View:</label>
+            <select value={selWell} onChange={e => setSelWell(e.target.value)}
+              className="px-3 py-1.5 bg-white border-2 border-[#1F3864] rounded text-xs text-[#1F3864] font-bold outline-none cursor-pointer"
+              style={{maxWidth:'240px'}}>
+              <option value="__all__">Portfolio Total</option>
+              {wellNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div style={{display:'flex', borderRadius:'4px', overflow:'hidden', border:'2px solid #1F3864'}}>
+            {['net','gross'].map(m => (
+              <button key={m} onClick={() => setMode(m)}
+                style={{
+                  padding:'6px 16px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none',
+                  background: mode===m ? '#1F3864' : 'white',
+                  color: mode===m ? 'white' : '#1F3864',
+                  transition:'all 0.15s',
+                }}>
+                {m === 'net' ? 'Net' : 'Gross'}
+              </button>
+            ))}
+          </div>
+          <div style={{display:'flex', borderRadius:'4px', overflow:'hidden', border:'2px solid #C55A11'}}>
+            {[{v:false,label:'$'},{v:true,label:'$/BOE'}].map(o => (
+              <button key={String(o.v)} onClick={() => setPerBoe(o.v)}
+                style={{
+                  padding:'6px 14px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none',
+                  background: perBoe===o.v ? '#C55A11' : 'white',
+                  color: perBoe===o.v ? 'white' : '#C55A11',
+                  transition:'all 0.15s',
+                }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <WbwSelector typeId={typeId} setTypeId={setTypeId}/>
+      {/* Date range picker */}
+      {months.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap px-1">
+          <span className="text-xs font-semibold text-gray-500 whitespace-nowrap">Period:</span>
+          <select value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+            style={{padding:'4px 8px', fontSize:'11px', border:'1px solid #D1D5DB', borderRadius:'4px',
+                    background:'white', color:'#374151', outline:'none', cursor:'pointer'}}>
+            <option value="">Earliest</option>
+            {months.map(m => <option key={m.key} value={m.key}>{m.disp}</option>)}
+          </select>
+          <span className="text-xs text-gray-400">→</span>
+          <select value={dateTo} onChange={e => setDateTo(e.target.value)}
+            style={{padding:'4px 8px', fontSize:'11px', border:'1px solid #D1D5DB', borderRadius:'4px',
+                    background:'white', color:'#374151', outline:'none', cursor:'pointer'}}>
+            <option value="">Latest</option>
+            {months.map(m => <option key={m.key} value={m.key}>{m.disp}</option>)}
+          </select>
+          {(dateFrom || dateTo) && (
+            <button onClick={() => { setDateFrom(''); setDateTo('') }}
+              style={{padding:'4px 10px', fontSize:'11px', fontWeight:600, border:'1px solid #D1D5DB',
+                      borderRadius:'4px', background:'white', color:'#6B7280', cursor:'pointer'}}>
+              Reset
+            </button>
+          )}
+          <span className="text-xs text-gray-400">|</span>
+          <span className="text-xs text-gray-400">LTM Avg uses last {ltmMonths.length} month{ltmMonths.length !== 1 ? 's' : ''} shown</span>
+        </div>
+      )}
+      </div>
 
+      {/* Table */}
       <div style={{overflowX:'auto', border:'1px solid #E5E7EB', borderRadius:'4px', boxShadow:'0 1px 3px rgba(0,0,0,0.06)'}}>
         <table style={{borderCollapse:'collapse', fontSize:'11px', width:'100%', tableLayout:'auto'}}>
           <thead>
-            <tr style={{backgroundColor:'#1F3864'}}>
-              <th style={th1S}>{typeDef.tableLabel}</th>
-              {months.map(mo => (
-                <th key={mo} style={thS}>{mo}</th>
-              ))}
-              <th style={thAvg}>Avg</th>
+            <tr style={{background:'#1F3864'}}>
+              <th style={{...sH1, padding:'8px 10px'}}>{selWell === '__all__' ? 'Portfolio Total' : selWell}</th>
+              {visibleMonths.map(m => <th key={m.key} style={{...sH, padding:'8px 10px', minWidth:'76px'}}>{m.disp}</th>)}
+              <th style={{...sH, ...sAvgT, padding:'8px 10px', minWidth:'80px'}}>LTM Avg</th>
             </tr>
           </thead>
-
           <tbody>
-            {sorted.map((w, i) => {
-              const avg = safeAvg(w.monthlyData, typeDef.pk)
-              const bg = i % 2 === 0 ? '#FFFFFF' : '#F9FAFB'
-              const td1S = { position:'sticky', left:0, background:bg, padding:'5px 10px', fontWeight:600, color:'#111827',
-                borderRight:'1px solid #E5E7EB', zIndex:1, whiteSpace:'nowrap', fontSize:'11px' }
-              const tdS  = { padding:'5px 8px', textAlign:'right', color:'#374151', borderRight:'1px solid #F3F4F6', fontSize:'11px', whiteSpace:'nowrap' }
-              const tdAvg = { ...tdS, fontWeight:700, color:'#1F3864', borderLeft:'2px solid #E5E7EB', borderRight:'none' }
-              return (
-                <tr key={w.wellName} style={{backgroundColor:bg}}>
-                  <td style={td1S}>{w.wellName}</td>
-                  {months.map(mo => {
-                    const v = lookup[w.wellName]?.[mo]
-                    return (
-                      <td key={mo} style={tdS}>
-                        {v != null && isFinite(v) ? typeDef.tableFmt(v) : <span style={{color:'#D1D5DB'}}>--</span>}
-                      </td>
-                    )
-                  })}
-                  <td style={tdAvg}>{avg != null ? typeDef.tableFmt(avg) : '--'}</td>
-                </tr>
-              )
-            })}
-          </tbody>
+            {rHdr('Volumes')}
+            {rRow('Gas (MCF)',          gasVol,   fV)}
+            {rRow('Oil (BBL)',          oilVol,   fV)}
+            {rRow('NGL (BBL)',          nglVol,   fV)}
+            {rSub('Total Volumes (BOE)', totalBOE, fV)}
+            {rRow('Daily Rate (BOE/d)', boed,     fBd, {bg:'#F9FAFB'})}
+            {rSpc('v')}
 
-          <tfoot>
-            <tr style={{backgroundColor:'#1F3864'}}>
-              <td style={{...th1S, borderTop:'2px solid #2E4A7A', fontWeight:700, color:'white'}}>Portfolio Total</td>
-              {months.map(mo => (
-                <td key={mo} style={{...thS, borderTop:'2px solid #2E4A7A'}}>
-                  {totals[mo] != null ? typeDef.tableFmt(totals[mo]) : '--'}
-                </td>
-              ))}
-              <td style={{...thAvg, borderTop:'2px solid #2E4A7A'}}>
-                {portfTotalAvg != null ? typeDef.tableFmt(portfTotalAvg) : '--'}
-              </td>
-            </tr>
-          </tfoot>
+            {rHdr('Revenues')}
+            {rRow('Gas', bw(gasRev), fDol)}
+            {rRow('Oil', bw(oilRev), fDol)}
+            {rRow('NGL', bw(nglRev), fDol)}
+            {rSub('Total Revenues', bw(totalRev), fDol)}
+            {rSpc('r')}
+
+            {rHdr('Direct LOE')}
+            {directLoeCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {rSub('Total Direct LOE', bw(directLoeTot), fDol)}
+            {rSpc('dl')}
+
+            {recurringLoeCats.length > 0 && rHdr('Recurring LOE')}
+            {recurringLoeCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {recurringLoeCats.length > 0 && rSub('Total Recurring LOE', bw(recurringLoeTot), fDol)}
+            {recurringLoeCats.length > 0 && rSpc('rl')}
+
+            {rHdr('Other Operating Expenses')}
+            {workoverCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {midstreamCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fM))}
+            {gptCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {prodTaxCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {rTot('Total Operating Expenses', bw(totalOpex), fDol)}
+            {rSpc('oe')}
+
+            {rMargin('Operating Margin', bw(opMargin), fM)}
+            {rSpc('om')}
+
+            {capexCats.length > 0 && rHdr('CAPEX')}
+            {capexCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {capexCats.length > 0 && rSub('Total CAPEX', bw(capexTot), fDol)}
+            {capexCats.length > 0 && rSpc('cx')}
+
+            {unknownCats.length > 0 && rHdr('Other Midstream')}
+            {unknownCats.map(([los, v]) => rRow(los, bw(mk => v.months[mk]?.amount || 0), fDol))}
+            {unknownCats.length > 0 && rSpc('unk')}
+
+            {rMargin('Asset Free Cash Flow', bw(assetFCF), fM)}
+          </tbody>
         </table>
       </div>
     </div>
@@ -1459,7 +1916,7 @@ const TABS = [
   { id:'inputs',          label:'ARIES Inputs' },
   { id:'rollup',          label:'Asset Rollup' },
   { id:'wellbywell',      label:'Well by Well Charts' },
-  { id:'wellbywelltable', label:'Well by Well Tables' },
+  { id:'wellbywelltable', label:'LOS Table' },
 ]
 const EC = { fixedPerWellMonth:'', varOilPerBOE:'', varWaterPerBBL:'', prodTaxPct:'', oilDiff:'', gasDiff:'', nglDiffPct:'' }
 
@@ -1469,7 +1926,12 @@ function App() {
   const [loading,   setLoading]  = useState(false)
   const [error,     setError]    = useState(null)
   const [fname,     setFname]    = useState(null)
-  const [inputs,    setInputs]   = useState({ vdrCase:{...EC}, myCase:{...EC} })
+  const [opFilter,  setOpFilter] = useState('all')  // 'all' | 'op' | 'obo'
+  const [liftFilter, setLiftFilter] = useState([])   // [] = all; multi-select from 'jp','rp','other'
+  const [inputs,    setInputs]   = useState({
+    vdrCase: { op: {...EC}, obo: {...EC} },
+    myCase:  { op: {...EC}, obo: {...EC} },
+  })
   // Lifted WBW state — persists across tab switches
   const [wbwTypeId, setWbwTypeId] = useState('netBOEd')
   const [wbwSortId, setWbwSortId] = useState('default')
@@ -1492,8 +1954,55 @@ function App() {
     r.readAsText(file)
   }, [processText])
 
-  const rollup   = useMemo(() => rows ? buildMonthlyRollup(rows) : [], [rows])
-  const wellData = useMemo(() => rows ? buildWellData(rows) : [],      [rows])
+  // Filter rawRows by Operated/Non-Op AND JP/RP/Other (both filters compose with AND logic)
+  const filteredRows = useMemo(() => {
+    if (!rows) return null
+
+    // Build well → effective jpRp using MODAL (most-frequent) value, counting blanks.
+    // "Last non-empty wins" mis-classifies ALLOC wells when a single stray JP/RP row appears
+    // after all the blank/ALLOC rows. Counting blank rows ('') prevents a minority of errant
+    // tags from overriding the true well classification.
+    const wellJpRpCounts = {}
+    for (const r of rows) {
+      const j = (r.jpRp || '').toUpperCase().trim()
+      if (!wellJpRpCounts[r.wellName]) wellJpRpCounts[r.wellName] = {}
+      wellJpRpCounts[r.wellName][j] = (wellJpRpCounts[r.wellName][j] || 0) + 1
+    }
+    const wellJpRp = {}
+    for (const [wn, counts] of Object.entries(wellJpRpCounts)) {
+      wellJpRp[wn] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
+    }
+
+    return rows.filter(r => {
+      // Op/OBO filter (row-level is correct — opObo is per-row in source data)
+      if (opFilter !== 'all') {
+        const v = (r.opObo || '').toUpperCase().trim()
+        const isOp  = v === 'OP' || v === 'OPERATED'
+        const isObo = v === 'OBO' || v === 'NON-OPERATED' || v === 'NON-OP' || v.startsWith('NON')
+        if (opFilter === 'op'  && !isOp)  return false
+        if (opFilter === 'obo' && !isObo) return false
+      }
+      // Lift type filter — use WELL-level modal classification so all rows for a well travel together
+      if (liftFilter.length > 0) {
+        const j = wellJpRp[r.wellName] || ''
+        const isJP = j === 'JP', isRP = j === 'RP'
+        const match = (liftFilter.includes('jp')    && isJP)
+                   || (liftFilter.includes('rp')    && isRP)
+                   || (liftFilter.includes('other') && !isJP && !isRP)
+        if (!match) return false
+      }
+      return true
+    })
+  }, [rows, opFilter, liftFilter])
+
+  const rollup   = useMemo(() => filteredRows ? buildMonthlyRollup(filteredRows) : [], [filteredRows])
+  const wellData = useMemo(() => filteredRows ? buildWellData(filteredRows) : [],      [filteredRows])
+
+  // Flatten inputs to the active sub-case for chart reference lines
+  const activeInputs = useMemo(() => {
+    const sub = opFilter === 'obo' ? 'obo' : 'op'
+    return { vdrCase: inputs.vdrCase[sub], myCase: inputs.myCase[sub] }
+  }, [inputs, opFilter])
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -1510,7 +2019,11 @@ function App() {
               <div className="hidden sm:flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-emerald-500"/>
                 <span className="text-xs text-gray-600 truncate">{fname}</span>
-                <span className="text-xs text-gray-400">{rows.length.toLocaleString()} rows | {wellData.length} wells | {rollup.length} months</span>
+                <span className="text-xs text-gray-400">
+                  {(filteredRows||rows).length.toLocaleString()} rows | {wellData.length} wells | {rollup.length} months
+                  {opFilter !== 'all' && <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{background:'#1F3864', color:'white'}}>{opFilter === 'op' ? 'Operated' : 'Non-Op'}</span>}
+                  {liftFilter.map(f => <span key={f} className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{background:'#C55A11', color:'white'}}>{f === 'jp' ? 'JP' : f === 'rp' ? 'RP' : 'Other'}</span>)}
+                </span>
               </div>
             )}
           </div>
@@ -1519,14 +2032,63 @@ function App() {
       </header>
 
       <nav className="border-b border-gray-200 bg-white">
-        <div className="max-w-[1440px] mx-auto px-6 flex">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors cursor-pointer
-                ${tab===t.id ? 'border-[#1F3864] text-[#1F3864]' : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'}`}>
-              {t.label}
-            </button>
-          ))}
+        <div className="max-w-[1440px] mx-auto px-6 flex items-center justify-between">
+          <div className="flex">
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`px-5 py-3 text-sm font-semibold border-b-2 transition-colors cursor-pointer
+                  ${tab===t.id ? 'border-[#1F3864] text-[#1F3864]' : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {rows && (
+            <div className="flex flex-col items-end gap-1.5 my-1.5 flex-shrink-0">
+              {/* Op / Non-Op filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-7 text-right">Op</span>
+                <div style={{display:'flex', borderRadius:'4px', overflow:'hidden', border:'1px solid #E5E7EB'}}>
+                  {[{id:'all',label:'Total'},{id:'op',label:'Operated'},{id:'obo',label:'Non-Op'}].map((o, oi) => (
+                    <button key={o.id} onClick={() => setOpFilter(o.id)}
+                      style={{
+                        padding:'4px 11px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none',
+                        borderRight: oi < 2 ? '1px solid #E5E7EB' : 'none',
+                        background: opFilter===o.id ? '#1F3864' : 'white',
+                        color: opFilter===o.id ? 'white' : '#6B7280',
+                        transition:'all 0.15s',
+                      }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Lift type filter — multi-select toggles */}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider w-7 text-right">Lift</span>
+                <div style={{display:'flex', borderRadius:'4px', overflow:'hidden', border:'1px solid #E5E7EB'}}>
+                  {[{id:'jp',label:'JP'},{id:'rp',label:'RP'},{id:'other',label:'Other'}].map((o, oi) => (
+                    <button key={o.id}
+                      onClick={() => setLiftFilter(prev => prev.includes(o.id) ? prev.filter(x => x !== o.id) : [...prev, o.id])}
+                      style={{
+                        padding:'4px 11px', fontSize:'11px', fontWeight:700, cursor:'pointer', border:'none',
+                        borderRight: oi < 2 ? '1px solid #E5E7EB' : 'none',
+                        background: liftFilter.includes(o.id) ? '#C55A11' : 'white',
+                        color: liftFilter.includes(o.id) ? 'white' : '#6B7280',
+                        transition:'all 0.15s',
+                      }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                {liftFilter.length > 0 && (
+                  <button onClick={() => setLiftFilter([])}
+                    style={{fontSize:'10px', color:'#9CA3AF', cursor:'pointer', background:'none', border:'none', textDecoration:'underline', padding:'0 2px'}}>
+                    clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
@@ -1558,13 +2120,11 @@ function App() {
         {!loading && rows && (
           <>
             {tab==='inputs'          && <InputsTab          ariesInputs={inputs} setAriesInputs={setInputs} monthlyRollup={rollup}/>}
-            {tab==='rollup'          && <RollupTab          monthlyRollup={rollup} ariesInputs={inputs} wellData={wellData}/>}
-            {tab==='wellbywell'      && <WellByWellTab      wellData={wellData} ariesInputs={inputs}
+            {tab==='rollup'          && <RollupTab          monthlyRollup={rollup} ariesInputs={activeInputs} wellData={wellData}/>}
+            {tab==='wellbywell'      && <WellByWellTab      wellData={wellData} ariesInputs={activeInputs}
                                           typeId={wbwTypeId} setTypeId={setWbwTypeId}
                                           sortId={wbwSortId} setSortId={setWbwSortId}/>}
-            {tab==='wellbywelltable' && <WellByWellTableTab wellData={wellData}
-                                          typeId={wbwTypeId} setTypeId={setWbwTypeId}
-                                          sortId={wbwSortId} setSortId={setWbwSortId}/>}
+            {tab==='wellbywelltable' && <LOSTableTab rawRows={filteredRows || []} wellData={wellData}/>}
           </>
         )}
 
