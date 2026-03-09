@@ -1,0 +1,3 @@
+diff input line not showing up on chart
+input gross hist volume, net will be gross vol*WI
+sev tax broken out by commodity, ad val tax

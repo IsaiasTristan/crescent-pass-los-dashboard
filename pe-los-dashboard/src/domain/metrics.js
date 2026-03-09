@@ -26,8 +26,21 @@ export function emptyM(date, mk, md) {
     gpt: 0, midstream: 0, workover: 0,
     fixed_jp: 0, fixed_rp: 0,
     workover_jp: 0, workover_rp: 0,
+    prod_tax_oil: 0, prod_tax_gas: 0, prod_tax_ngl: 0,
+    ad_valorem_tax: 0,
     prod_taxes: 0, capex: 0,
   }
+}
+
+function taxComponentKey(row) {
+  const cat = (row.cat || '').toString().trim().toLowerCase()
+  const los = (row.los || '').toString().trim().toLowerCase()
+
+  if (cat === 'pto' || los === 'production taxes-oil') return 'prod_tax_oil'
+  if (cat === 'ptg' || los === 'production taxes-gas') return 'prod_tax_gas'
+  if (cat === 'ptngl' || los === 'production taxes-ngl') return 'prod_tax_ngl'
+  if (cat === 'at' || los === 'ad valorem taxes') return 'ad_valorem_tax'
+  return null
 }
 
 // Accumulate one parsed row into a month accumulator.
@@ -44,7 +57,11 @@ export function accum(m, row) {
   else if (b === 'gpt')            { m.gpt        += na }
   else if (b === 'midstream')      { m.midstream  += na }
   else if (b === 'workover')       { m.workover   += na }
-  else if (b === 'prod_taxes')     { m.prod_taxes += na }
+  else if (b === 'prod_taxes')     {
+    m.prod_taxes += na
+    const taxKey = taxComponentKey(row)
+    if (taxKey) m[taxKey] += na
+  }
   else if (b === 'capex')          { m.capex      += na }
 }
 
@@ -58,6 +75,8 @@ export function metrics(m, wellCount, splitCounts = {}) {
   const rev    = m.oil_rev + m.gas_rev + m.ngl_rev
   const los    = m.fixed + m.var_oil + m.var_water + m.gpt + m.workover + m.prod_taxes
   const margin = rev - los
+  const severanceTaxes = m.prod_tax_oil + m.prod_tax_gas + m.prod_tax_ngl
+  const adValoremBase = rev - severanceTaxes
   return {
     ...m, wellCount, netBOE, grossBOE,
     netOild:          sd(m.oil_vol,          days),
@@ -91,6 +110,11 @@ export function metrics(m, wellCount, splitCounts = {}) {
     rpWorkoverPerWell:  sd(m.workover_rp || 0, rpWellCount),
     capexPerWell:     sd(m.capex, wellCount),
     prodTaxPct:       rev > 0 ? sd(m.prod_taxes, rev) * 100 : 0,
+    severanceTaxes,
+    oilSevTaxPct:     m.oil_rev > 0 ? sd(m.prod_tax_oil, m.oil_rev) * 100 : 0,
+    gasSevTaxPct:     m.gas_rev > 0 ? sd(m.prod_tax_gas, m.gas_rev) * 100 : 0,
+    nglSevTaxPct:     m.ngl_rev > 0 ? sd(m.prod_tax_ngl, m.ngl_rev) * 100 : 0,
+    adValTaxPct:      adValoremBase > 0 ? sd(m.ad_valorem_tax, adValoremBase) * 100 : 0,
     costPerBOE:       sd(los,    netBOE),
     revenuePerBOE:    sd(rev,    netBOE),
     marginPerBOE:     sd(margin, netBOE),

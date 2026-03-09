@@ -135,9 +135,9 @@ export function smartUnit(type, pref, maxVal) {
 
 // ─── LTM average builder ──────────────────────────────────────────────────────
 
-export function buildLTM(data, key) {
+export function buildLTM(data, key, months = 12) {
   if (!data || !data.length) return null
-  const recent = data.slice(-12)
+  const recent = data.slice(-months)
   const vals   = recent.map(d => d[key]).filter(v => v != null && isFinite(v))
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null
 }

@@ -64,14 +64,36 @@ function parseNum(raw) {
   return isNaN(n) ? null : n
 }
 
+function tryParseWithDelimiter(text, delimiter) {
+  const parsed = Papa.parse(text, { delimiter, header: false, skipEmptyLines: true })
+  const rows = parsed.data || []
+  if (!rows.length) return null
+
+  const headers = rows[0] || []
+  const headerIndex = buildHeaderIndex(headers)
+  const dateIdx = findIndex(headerIndex, ['date', 'month', 'pricing date', 'price date', 'service end date'])
+  if (dateIdx === -1) return null
+
+  return { rows, headerIndex, delimiter }
+}
+
 export function parseHistoricalPricingCSVText(text) {
   const cleaned = (text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
-  const parsed = Papa.parse(cleaned, { header: false, skipEmptyLines: true })
-  const rows = parsed.data || []
-  if (!rows.length) throw new Error('Historical pricing CSV appears empty.')
+  const delimitersToTry = ['\t', ',', ';']
+  let attempt = null
+  for (const delimiter of delimitersToTry) {
+    attempt = tryParseWithDelimiter(cleaned, delimiter)
+    if (attempt) break
+  }
 
-  const headers = rows[0]
-  const headerIndex = buildHeaderIndex(headers)
+  if (!attempt) {
+    const fallback = Papa.parse(cleaned, { header: false, skipEmptyLines: true })
+    const rows = fallback.data || []
+    if (!rows.length) throw new Error('Historical pricing CSV appears empty.')
+    throw new Error('Missing date column. Add a "Date" or "Month" column.')
+  }
+
+  const { rows, headerIndex } = attempt
 
   const dateIdx = findIndex(headerIndex, ['date', 'month', 'pricing date', 'price date', 'service end date'])
   const wtiIdx = findIndex(headerIndex, ['wti', 'wti price', 'wti cushing'])

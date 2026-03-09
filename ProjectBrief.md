@@ -193,9 +193,9 @@ Text secondary:  #6b7280 (gray-500)
 Text muted:      #9ca3af (gray-400)
 
 Chart colors (Evercore IB palette):
-  Oil:           #1F3864  (dark navy)
-  Gas:           #C55A11  (burnt orange)
-  NGL:           #548235  (forest green)
+  Oil:rgb(34, 136, 14)  (dark navy)
+  Gas:rgb(211, 26, 13)  (burnt orange)
+  NGL:rgb(158, 180, 34)  (forest green)
   Fixed:         #2E74B5  (medium blue)
   Var Oil:       #5B9BD5  (steel blue)
   Var Water:     #9DC3E6  (light blue)
@@ -229,7 +229,7 @@ Sensitive data files (raw LOS CSVs under `01. Analysis/` and `pe-los-dashboard/p
 
 ```
 <repo root>/
-├── CLAUDE.md                          ← this file
+├── ProjectBrief.md                          ← this file
 ├── AGENTS.md                          ← mirrors Cursor rules for terminal agents
 ├── LOS Dashboard.html                 ← standalone HTML version, use until Node is installed
 └── pe-los-dashboard/                  ← Vite + React project

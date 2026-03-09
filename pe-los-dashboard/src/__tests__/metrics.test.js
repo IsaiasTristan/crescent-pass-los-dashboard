@@ -35,8 +35,8 @@ describe('daysInMonth', () => {
 
 // ─── accum + metrics ──────────────────────────────────────────────────────────
 
-function makeRow(bucket, netAmount, netVolume, grossVolume = 0) {
-  return { bucket, netAmount, netVolume, grossVolume }
+function makeRow(bucket, netAmount, netVolume, grossVolume = 0, extra = {}) {
+  return { bucket, netAmount, netVolume, grossVolume, ...extra }
 }
 
 describe('accum and metrics', () => {
@@ -122,5 +122,27 @@ describe('accum and metrics', () => {
     const r = metrics(m, 3)
     expect(r.totalFixed).toBeCloseTo(90000)
     expect(r.fixedPerWell).toBeCloseTo(30000)  // 90000 / 3 wells
+  })
+
+  it('breaks out production taxes by commodity and ad valorem', () => {
+    const m = emptyM(date, '2024-01', "Jan '24")
+    accum(m, makeRow('oil', -100000, -1000))
+    accum(m, makeRow('gas', -50000, -600))
+    accum(m, makeRow('ngl', -25000, -4200))
+    accum(m, makeRow('prod_taxes', 4000, 0, 0, { cat: 'PTo' }))
+    accum(m, makeRow('prod_taxes', 2000, 0, 0, { cat: 'PTg' }))
+    accum(m, makeRow('prod_taxes', 1000, 0, 0, { cat: 'PTngl' }))
+    accum(m, makeRow('prod_taxes', 3000, 0, 0, { cat: 'AT' }))
+
+    const r = metrics(m, 1)
+    expect(r.prod_tax_oil).toBeCloseTo(4000)
+    expect(r.prod_tax_gas).toBeCloseTo(2000)
+    expect(r.prod_tax_ngl).toBeCloseTo(1000)
+    expect(r.ad_valorem_tax).toBeCloseTo(3000)
+    expect(r.severanceTaxes).toBeCloseTo(7000)
+    expect(r.oilSevTaxPct).toBeCloseTo((4000 / 100000) * 100)
+    expect(r.gasSevTaxPct).toBeCloseTo((2000 / 50000) * 100)
+    expect(r.nglSevTaxPct).toBeCloseTo((1000 / 25000) * 100)
+    expect(r.adValTaxPct).toBeCloseTo((3000 / (175000 - 7000)) * 100)
   })
 })

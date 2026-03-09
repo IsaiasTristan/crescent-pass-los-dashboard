@@ -99,6 +99,26 @@ describe('buildMonthlyRollup', () => {
     expect(rollup[0].jpWorkoverPerWell).toBeCloseTo(150)    // 300 / 2 JP wells
     expect(rollup[0].rpWorkoverPerWell).toBeCloseTo(150)    // 150 / 1 RP well
   })
+
+  it('breaks production taxes out into oil, gas, ngl severance and ad valorem', () => {
+    const rows = [
+      row({ bucket: 'oil', netAmount: -100000, netVolume: -1000 }),
+      row({ bucket: 'gas', netAmount: -50000, netVolume: -600, cat: 'RevG', los: 'Gas' }),
+      row({ bucket: 'ngl', netAmount: -25000, netVolume: -4200, cat: 'RevNGL', los: 'NGL' }),
+      row({ bucket: 'prod_taxes', netAmount: 4000, netVolume: 0, cat: 'PTo', los: 'Production Taxes-Oil' }),
+      row({ bucket: 'prod_taxes', netAmount: 2000, netVolume: 0, cat: 'PTg', los: 'Production Taxes-Gas' }),
+      row({ bucket: 'prod_taxes', netAmount: 1000, netVolume: 0, cat: 'PTngl', los: 'Production Taxes-NGL' }),
+      row({ bucket: 'prod_taxes', netAmount: 3000, netVolume: 0, cat: 'AT', los: 'Ad Valorem Taxes' }),
+    ]
+    const rollup = buildMonthlyRollup(rows)
+    expect(rollup[0].prod_taxes).toBeCloseTo(10000)
+    expect(rollup[0].prod_tax_oil).toBeCloseTo(4000)
+    expect(rollup[0].prod_tax_gas).toBeCloseTo(2000)
+    expect(rollup[0].prod_tax_ngl).toBeCloseTo(1000)
+    expect(rollup[0].ad_valorem_tax).toBeCloseTo(3000)
+    expect(rollup[0].oilSevTaxPct).toBeCloseTo((4000 / 100000) * 100)
+    expect(rollup[0].adValTaxPct).toBeCloseTo((3000 / (175000 - 7000)) * 100)
+  })
 })
 
 // ─── buildWellData ────────────────────────────────────────────────────────────

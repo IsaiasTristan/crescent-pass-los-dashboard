@@ -29,6 +29,21 @@ describe('parseHistoricalPricingCSVText', () => {
     expect(out.rows[0].hscBasis).toBeCloseTo(-0.2)
   })
 
+  it('parses tab-delimited files with a Month header', () => {
+    const csv = [
+      'Month\tMEH\tHSC\tWTI',
+      '11/30/24\t70.88809\t1.91\t69.462',
+      '12/31/24\t71.08808\t3.27\t69.6403',
+    ].join('\n')
+
+    const out = parseHistoricalPricingCSVText(csv)
+    expect(out.rows).toHaveLength(2)
+    expect(out.rows[0].monthKey).toBe('2024-11')
+    expect(out.rows[0].meh).toBeCloseTo(70.88809)
+    expect(out.rows[0].hsc).toBeCloseTo(1.91)
+    expect(out.rows[0].wti).toBeCloseTo(69.462)
+  })
+
   it('returns warning for invalid date rows and keeps valid rows', () => {
     const csv = [
       'Date,WTI,HH,MEH Basis,HSC Basis',

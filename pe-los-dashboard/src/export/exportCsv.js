@@ -79,6 +79,11 @@ export function exportHistorical(wellData) {
         'GPT ($)':              m.gpt.toFixed(0),
         'Midstream ($)':        m.midstream.toFixed(0),
         'Prod Taxes ($)':       m.prod_taxes.toFixed(0),
+        'Oil Severance Tax ($)': m.prod_tax_oil.toFixed(0),
+        'Gas Severance Tax ($)': m.prod_tax_gas.toFixed(0),
+        'NGL Severance Tax ($)': m.prod_tax_ngl.toFixed(0),
+        'Ad Valorem Tax ($)':    m.ad_valorem_tax.toFixed(0),
+        'Severance Taxes ($)':   m.severanceTaxes.toFixed(0),
         'CAPEX ($)':            m.capex.toFixed(0),
         'Total LOS ($)':        m.totalLOS.toFixed(0),
         'Revenue ($)':          m.totalRevenue.toFixed(0),
@@ -97,6 +102,10 @@ export function exportHistorical(wellData) {
         'Oil Diff ($/BBL)':     m.oilDifferential != null ? m.oilDifferential.toFixed(2) : '',
         'Gas Diff ($/MCF)':     m.gasDifferential != null ? m.gasDifferential.toFixed(2) : '',
         'NGL Diff (% of WTI)':  m.nglDifferential != null ? (m.nglDifferential * 100).toFixed(2) : '',
+        'Oil Severance Tax (% Rev)': m.oilSevTaxPct.toFixed(2),
+        'Gas Severance Tax (% Rev)': m.gasSevTaxPct.toFixed(2),
+        'NGL Severance Tax (% Rev)': m.nglSevTaxPct.toFixed(2),
+        'Ad Valorem Tax (% Rev net of severance)': m.adValTaxPct.toFixed(2),
       })
     }
   }
