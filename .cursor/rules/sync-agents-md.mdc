@@ -1,0 +1,14 @@
+---
+description: 
+alwaysApply: true
+---
+
+# Sync AGENTS.md with project context
+
+When you change any of the following, update **AGENTS.md** so terminal and other agents stay aligned:
+
+- **CLAUDE.md** — status, data spec, file structure, architecture, session log, or any section that affects how agents should behave.
+- **Cursor rules** — any rule in `.cursor/rules/` (including this one).
+
+Update AGENTS.md by mirroring the changed guidance. Do not change the meaning of rules; keep the same structure (Project Scope, Quick context, Unresolved, File structure, Data and calculations, Architecture, Engineering principles, Sync instruction). If CLAUDE.md or rules add new topics that belong in agent guidance, add a corresponding section to AGENTS.md.
+Perform “status freshness check” (verify blockers with commands and update date stamps)

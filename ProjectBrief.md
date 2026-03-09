@@ -1,6 +1,8 @@
 # PE E&P LOS Dashboard — Project Context
 
-This file is shared between Claude Code (CLI) and Claude in Cursor so both can work on the same project with full context. Update this file whenever significant decisions are made or status changes.
+**Purpose:** This file is the single source of truth for project context — shared between Claude Code (CLI) and Claude in Cursor so both can work on the same project without re-discovering everything. It is **useful and worth keeping**: it documents data specs, architecture, status, and session history in one place.
+
+**Keeping it useful:** Update this file whenever something important changes (e.g. you install Node.js, fix a known issue, change architecture, or add a major feature). Stale entries (like "Node.js not installed" after you've installed it) make the file misleading. When in doubt, update the "Current Status" and "Unresolved" sections so the next session has accurate assumptions.
 
 ---
 
@@ -14,33 +16,30 @@ A private-equity due diligence tool for analyzing well-by-well Lease Operating S
 
 ## Two Parallel Builds
 
-### 1. `LOS Dashboard.html` ← CURRENT WORKING VERSION
-Single standalone HTML file. No Node.js required. Opens directly in Chrome.
+### 1. `LOS Dashboard.html` — Standalone (no Node.js)
+Single standalone HTML file. Opens directly in Chrome. No install required.
 - React 18 + Recharts + PapaParse + Tailwind Play CDN, all loaded from CDN
 - JSX compiled in-browser by Babel standalone
 - CSV loaded via drag-and-drop or file picker (no auto-fetch — browser security)
-- **Use this until Node.js is installed**
 
-### 2. `pe-los-dashboard/` ← VITE PROJECT (ready, not yet runnable)
-Full Vite + React project. Requires Node.js.
+### 2. `pe-los-dashboard/` — Vite project (recommended when Node.js is available)
+Full Vite + React project. Run with Node.js installed:
 ```
-npm install
-npm run dev
+cd pe-los-dashboard && npm install && npm run dev
 ```
-Identical features to the HTML version but faster, hot-reload, and serves `/public/data/los_data.csv` automatically on startup.
-- **CSV goes in:** `pe-los-dashboard/public/data/los_data.csv`
-- **Use this once Node.js is installed**
+Identical features to the HTML version but with hot-reload and optional auto-load of `/public/data/los_data.csv`.
+- **CSV for auto-load:** `pe-los-dashboard/public/data/los_data.csv`
 
 ---
 
 ## Current Status
 
 ### Working
-- [x] 3-tab layout (ARIES Inputs, Portfolio Rollup, Well by Well)
+- [x] 4-tab layout (ARIES Inputs, Asset Rollup, Well by Well, LOS Table)
 - [x] CSV parsing — tab- or comma-delimited, dynamic column detection from header
 - [x] Data aggregations — monthly rollup + per-well monthly series
 - [x] Sign flip: oil/gas/NGL revenue + volume stored negative in source, flipped via Math.abs()
-- [x] 13 portfolio rollup charts — all BarCharts, titles with units, IB pitchbook style
+- [x] 17 portfolio rollup charts (Asset Rollup) — all BarCharts, titles with units, IB pitchbook style
 - [x] ARIES input form (VDR Case / My Case / Variance / Historical Avg)
 - [x] ARIES overlay reference lines on rollup charts (orange dashed = My Case, gray dotted = VDR)
 - [x] Well-by-well cards with 28 chart type options, search/filter, and sort (oil/gas/total vol)
@@ -56,17 +55,16 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 
 ### Known Issues
 
-- **Node.js:** Confirmed NOT installed as of 2026-03-05 — `node --version` and `npm --version` both return "command not found" in Cursor terminal. Must install from [nodejs.org](https://nodejs.org) (LTS) before `pe-los-dashboard/` can be used.
+_(None at this time.)_
 
 ### Unresolved / Needs Confirmation
 
 > **Read this before starting any session.** These items are blocking or uncertain and need user input before proceeding.
 
-| # | Item | Action Required |
-|---|------|-----------------|
-| 1 | Node.js not installed | User must install Node.js LTS from [nodejs.org](https://nodejs.org), then restart Cursor, before the Vite project can be used |
+_(None at this time.)_
 
 ### Recently Resolved
+- **Node.js:** User has Node.js installed; the Vite project (`pe-los-dashboard/`) is runnable with `npm install && npm run dev`. Previous "Node.js not installed" blocker removed.
 - **Grey page / Recharts CDN failure** — Confirmed 2026-03-06: jsDelivr and unpkg both fail on this machine. Fix: entire Recharts 2.12.7 UMD build inlined directly into `LOS Dashboard.html` (no external file needed). Also added missing `prop-types` CDN script (Recharts UMD peer dep) before the inlined Recharts block.
 - **CSV comma-delimiter error** — Confirmed 2026-03-06: data file (`Gross and Net LOS_3.5.26.csv`) is comma-delimited, not tab-delimited. Fix: `parseCSVText()` now auto-detects delimiter by counting tabs vs commas in the first line. UI hint updated to "Tab or comma delimited."
 
@@ -122,7 +120,7 @@ Identical features to the HTML version but faster, hot-reload, and serves `/publ
 // PRIMARY — Cost Category (cat field, col 1)
 const COST_CAT_BUCKETS = {
   'RevO': 'oil', 'RevG': 'gas', 'RevNGL': 'ngl',   // revenue + volume
-  'Fixed': 'fixed', 'Other': 'fixed',               // direct LOE
+  'Fixed': 'fixed', 'Other': 'capex',                // CAPEX excluded from LOS
   'Var':   'variable_oil',
   'VW':    'variable_water',
   'GPT':   'gpt',                                    // separate GPT section
@@ -135,7 +133,7 @@ const COST_CAT_BUCKETS = {
 const LOS_BUCKETS = {
   'Oil': 'oil', 'Gas': 'gas', 'NGL': 'ngl',
   'Chemicals': 'variable_oil', 'Fuel & Power': 'variable_oil',
-  'Gathering, Trans. & Processing': 'variable_oil',
+  'Gathering, Trans. & Processing': 'gpt',
   'Liquids Hauling & Disposal': 'variable_water',
   'Company Labor': 'fixed', 'Contract Labor/Pumper': 'fixed',
   'Field Office': 'fixed', 'EHS & Regulatory': 'fixed',
@@ -227,35 +225,45 @@ Sensitive data files (raw LOS CSVs under `01. Analysis/` and `pe-los-dashboard/p
 
 ## File Structure
 
+**Note:** Repo path may differ by machine (e.g. desktop vs work computer); the structure below is relative to the repo root.
+
 ```
-C:\Coding Projects\01. Crescent Pass\
+<repo root>/
 ├── CLAUDE.md                          ← this file
-├── LOS Dashboard.html                 ← standalone, use now
-└── pe-los-dashboard/                  ← Vite project, use after Node install
-    ├── package.json
-    ├── index.html
-    ├── vite.config.js
-    ├── tailwind.config.js
-    ├── postcss.config.js
-    ├── public/
-    │   └── data/
-    │       └── los_data.csv           ← put CSV here for auto-load
+├── AGENTS.md                          ← mirrors Cursor rules for terminal agents
+├── LOS Dashboard.html                 ← standalone HTML version, use until Node is installed
+└── pe-los-dashboard/                  ← Vite + React project
+    ├── package.json                   ← add vitest after Node install; run npm install then npm run dev
+    ├── vite.config.js                 ← includes vitest config block
     └── src/
-        ├── main.jsx
-        ├── App.jsx                    ← root: CSV load/upload, tab routing, state
+        ├── main.jsx                   ← entry point — renders <App />
+        ├── App.jsx                    ← orchestration: state, file upload, tab routing, tab UI components
         ├── index.css
         ├── constants/
-        │   └── losMapping.js          ← LOS_BUCKETS, COST_CAT_BUCKETS, CHART_COLORS
+        │   ├── losMapping.js          ← LOS_BUCKETS, COST_CAT_BUCKETS, CHART_COLORS, ARIES state shape, TABS
+        │   └── wbwTypes.js            ← WBW_TYPES, WBW_GROUPS, SORT_OPTIONS (imports from losMapping + formatters)
+        ├── ingest/
+        │   └── parseCsv.js            ← parseCSVText, parseDate, parseNum, resolveBucket, monthKey, monthDisp
+        ├── domain/
+        │   └── metrics.js             ← GAS_BOE, sd, daysInMonth, emptyM, accum, metrics
+        ├── selectors/
+        │   └── buildRollups.js        ← buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs
+        ├── export/
+        │   └── exportCsv.js           ← exportInputs, exportHistorical, parseAriesImport
+        ├── charts/
+        │   └── chartConfig.js         ← shared Recharts config (CM, GP, AP, TP, LP, WAP, WCM, segLabel, topLabel, rl, smartUnit, buildLTM, safeAvg)
         ├── utils/
-        │   ├── parseCSV.js            ← tab-delimited parser, col index map
-        │   ├── aggregations.js        ← buildMonthlyRollup(), buildWellData()
-        │   └── exportCSV.js           ← exportAriesInputs(), exportHistoricalData()
-        └── components/
-            ├── ChartCard.jsx          ← reusable chart wrapper + mini table
-            ├── ExportButton.jsx       ← styled download button
-            ├── InputsTab.jsx          ← ARIES inputs form
-            ├── RollupTab.jsx          ← 13 portfolio charts, 2-col grid
-            └── WellByWellTab.jsx      ← well cards + chart type toggle
+        │   └── formatters.js          ← fD, fD1, f$, fB, fP, fG, fBoed, fMcfd, fMdol
+        ├── components/
+        │   ├── ChartCard.jsx          ← placeholder (logic now in App.jsx)
+        │   ├── ExportButton.jsx       ← styled download button
+        │   ├── InputsTab.jsx          ← placeholder (logic now in App.jsx + constants/losMapping.js)
+        │   ├── RollupTab.jsx          ← placeholder (logic now in App.jsx + charts/chartConfig.js)
+        │   └── WellByWellTab.jsx      ← placeholder (logic now in App.jsx + constants/wbwTypes.js)
+        └── __tests__/
+            ├── parseCsv.test.js       ← parseDate, parseNum, resolveBucket
+            ├── metrics.test.js        ← sd, daysInMonth, accum, metrics
+            └── buildRollups.test.js   ← buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs
 ```
 
 ---
@@ -306,6 +314,9 @@ activeInputs = { vdrCase: inputs.vdrCase[slice], myCase: inputs.myCase[slice] }
 - **Gross vs. Net production:** Gross volumes from col 6, Net volumes from col 20. Both stored in parsed rows. Rollup uses both.
 - **Gas BOE conversion:** 6 MCF = 1 BOE (hardcoded constant `GAS_BOE = 6`).
 - **Days in month:** Use actual days (28/29/30/31), not fixed 30, when converting monthly totals to daily rates.
+- **Canonical module architecture (Session 13):** All domain logic extracted from `App.jsx` into dedicated modules under `ingest/`, `domain/`, `selectors/`, `export/`, `charts/`, `utils/`, and `constants/`. `App.jsx` now contains only state, file upload, tab routing, and tab-level UI components. Stale duplicates in `utils/parseCSV.js`, `utils/aggregations.js`, `utils/exportCSV.js` deleted.
+- **parseCSVText returns `{ rows, warnings }`** — structural errors still throw; data-quality issues (bad dates, bad numerics, unmapped categories) are returned as warnings and displayed in the UI as an amber banner.
+- **parseDate validates round-trip:** Accepts only 2-digit years (YY). Rejects 4-digit years and rolled-over invalid dates (e.g. Feb 31) by checking the constructed Date against original components.
 
 ---
 
@@ -354,6 +365,16 @@ DISCORD_CHANNEL_ID  = your-channel-id
 
 ## Session Log (reverse chronological)
 
+**2026-03-08 — Session 13**
+- **Canonical module architecture:** Extracted all domain logic from `App.jsx` into dedicated modules (see updated File Structure above). `App.jsx` reduced from ~2,334 lines to orchestration only.
+- **New modules created:** `src/ingest/parseCsv.js`, `src/domain/metrics.js`, `src/selectors/buildRollups.js`, `src/export/exportCsv.js`, `src/charts/chartConfig.js`, `src/utils/formatters.js`, `src/constants/wbwTypes.js`.
+- **`src/constants/losMapping.js` expanded:** Now exports `EMPTY_CASE`, `INITIAL_ARIES_INPUTS`, `ARIES_INPUT_FIELDS`, `ARIES_IMPORT_KEY_MAP`, `TABS`, `RECURRING_LOE_NAMES`, `KNOWN_BUCKETS` in addition to buckets and colors.
+- **Stale duplicates deleted:** `src/utils/parseCSV.js`, `src/utils/aggregations.js`, `src/utils/exportCSV.js` removed. Old component files (`InputsTab.jsx`, `RollupTab.jsx`, `WellByWellTab.jsx`) replaced with placeholder stubs.
+- **Validation hardening:** `parseCSVText` now returns `{ rows, warnings }`. Invalid dates and non-numeric amounts/volumes are flagged as warnings. Unmapped category labels are surfaced in the warning list rather than silently dropped. `parseDate` validates round-trip (rejects rolled-over dates and 4-digit years).
+- **Historical export expanded:** `exportHistorical` now includes `gpt`, `workover`, `capex`, `midstream`, `totalFixed`, and `assetFCF` columns (previously missing).
+- **FileReader `onerror` added** to ARIES import in `InputsTab`.
+- **Vitest test harness added:** `npm test` runs after Node install. Test files in `src/__tests__/`: `parseCsv.test.js`, `metrics.test.js`, `buildRollups.test.js`. Run with `npm test`.
+
 **2026-03-06 — Session 12**
 - **`Other` cat = CAPEX**: `COST_CAT_BUCKETS['Other']` changed from `'fixed'` → `'capex'`. CAPEX is now tracked separately and excluded from all LOE totals.
 - **CAPEX flows through full pipeline**: `emptyM` + `accum` + `metrics` now accumulate `capex`. `buildMonthlyRollup` and `buildWellData` no longer skip capex rows. `buildLOSCatData` no longer skips capex rows.
@@ -370,7 +391,7 @@ DISCORD_CHANNEL_ID  = your-channel-id
 - **Cost Category made primary index**: `resolveBucket()` now checks `cat` (Cost Category, col 1) first, falls back to `los` (LOS Category, col 16). Previously `los` was primary.
 - **New buckets added**: `gpt` (Gathering/Trans/Processing) and `workover`. Both tracked separately through `emptyM`, `accum`, `metrics`, and `totalLOS`.
 - **`MS` (midstream revenue credit) explicitly excluded**: maps to `null` → skipped in all aggregations.
-- **COST_CAT_BUCKETS reworked**: `Other→fixed`, `GPT→gpt`, `WORK→workover`, `AT→prod_taxes`, `PTngl→prod_taxes` (renamed from `PTn`), `MS→null`.
+- **COST_CAT_BUCKETS reworked**: `GPT→gpt`, `WORK→workover`, `AT→prod_taxes`, `PTngl→prod_taxes` (renamed from `PTn`), `MS→null`. (`Other` was listed as `Other→fixed` here; in Session 12 it was changed to `Other→capex` — CAPEX excluded from LOS.)
 - **LOS Table new sections**: "Gathering, Trans. & Processing" section (subtotal GPT) and "Workover" section added between Direct LOE and Production Taxes. `totalLOE` now includes GPT + Workover.
 - **JP/RP_USE column fix**: lift filter now reads from `JP/RP_USE` column (detected by header name, fuzzy match) instead of hardcoded `JP/RP` at col 8. `Other` lift type = wells where `JP/RP_USE` value is not "JP" or "RP" (includes "Other"/"ALLOC" tagged rows).
 - **LOS bucket additions**: `Ad Valorem Taxes→prod_taxes`, `LOE→fixed`, `Gathering, Trans. & Processing→variable_oil` added to LOS_BUCKETS fallback.

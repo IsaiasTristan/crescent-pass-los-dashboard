@@ -532,10 +532,12 @@ const LP  = { wrapperStyle: { fontSize: '10px', paddingTop: '4px', color: '#3741
 const fD    = n => (n==null||isNaN(n)) ? '--' : n.toFixed(0)
 const fD1   = n => (n==null||isNaN(n)) ? '--' : n.toFixed(1)
 const fK    = n => (n==null||isNaN(n)) ? '--' : `$${(n/1000).toFixed(0)}K`
-const f$    = n => (n==null||isNaN(n)) ? '--' : `$${Number(n).toLocaleString('en-US',{maximumFractionDigits:0})}`
-const fB    = n => (n==null||isNaN(n)) ? '--' : `$${Number(n).toFixed(2)}`
+const f$    = n => (n==null||isNaN(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)).toLocaleString('en-US',{maximumFractionDigits:0})})` : `$${Number(n).toLocaleString('en-US',{maximumFractionDigits:0})}`)
+const fB    = n => (n==null||isNaN(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)).toFixed(2)})` : `$${Number(n).toFixed(2)}`)
 const fP    = n => (n==null||isNaN(n)) ? '--' : `${Number(n).toFixed(2)}%`
-const fG    = n => (n==null||isNaN(n)) ? '--' : `$${Number(n).toFixed(3)}`
+const fG    = n => (n==null||isNaN(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)).toFixed(3)})` : `$${Number(n).toFixed(3)}`)
+const fG1   = n => (n==null||isNaN(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)).toFixed(1)})` : `$${Number(n).toFixed(1)}`)
+const fG2   = n => (n==null||isNaN(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)).toFixed(2)})` : `$${Number(n).toFixed(2)}`)
 // MBoe/d or MBpd: thousands BOE/d or Bbl/d — used for portfolio rollup charts
 const fMBd  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : (n/1000).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
 // MMcfd or MMcf — used for portfolio rollup charts
@@ -544,8 +546,10 @@ const fMMcfd = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : (n/1000).toLocale
 const fBoed  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : n.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})
 // Mcf/d or Mcf/mo — raw MCF values for well-by-well
 const fMcfd  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : n.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})
-// $M: millions of dollars with 1 decimal
-const fMdol  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : `$${(n/1e6).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})}M`
+// Dollar values scaled to millions with 1 decimal, no M/MM suffix in chart labels
+const fMdol  = n => (n==null||isNaN(n)||!isFinite(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)/1e6).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})})` : `$${(n/1e6).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1})}`)
+const fmtMoney = (n, d=1) => (n==null||isNaN(n)||!isFinite(n)) ? '--' : (Number(n) < 0 ? `($${Math.abs(Number(n)).toFixed(d)})` : `$${Number(n).toFixed(d)}`)
+const fmtMoneyScaled = (n, scale=1, d=1) => fmtMoney(Number(n)/scale, d)
 // Bar label helpers: factory functions returning Recharts LabelList content renderers
 const segLabel = fmt => ({ x, y, width, height, value }) => {
   if (!value || !isFinite(value) || value === 0 || height < 14) return null
@@ -553,7 +557,8 @@ const segLabel = fmt => ({ x, y, width, height, value }) => {
 }
 const topLabel = fmt => ({ x, y, width, value }) => {
   if (!value || !isFinite(value) || value === 0) return null
-  return <text x={x+width/2} y={y-5} textAnchor="middle" fill="#374151" fontSize={9} fontWeight={700}>{fmt(value)}</text>
+  const yPos = value < 0 ? y + 14 : y - 5
+  return <text x={x+width/2} y={yPos} textAnchor="middle" fill="#374151" fontSize={9} fontWeight={700}>{fmt(value)}</text>
 }
 
 function safeAvg(arr, key) {
@@ -829,8 +834,12 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   // Shared label formatters for bar chart labels
   const mbf  = n => (n/1000).toFixed(1)         // MBoed label
   const mmf  = n => (n/1000).toFixed(1)          // MMcfd label
-  const dlf  = n => `$${(n/1e6).toFixed(1)}M`   // $M label
-  const bof  = n => `$${n.toFixed(1)}`           // $/Boe label
+  const dlf  = n => fmtMoneyScaled(n, 1e6, 1)
+  const perUnitFmt = n => fmtMoney(n, 2)
+  const realizedFmt = n => fmtMoney(n, 2)
+  const realizedGasFmt = n => fmtMoney(n, 2)
+  const perWellFmt = n => fmtMoneyScaled(n, 1000, 1)
+  const perWellUnitLabel = '$M/Well/mo'
 
   // Section divider component
   const SectionHeader = ({ title }) => (
@@ -871,6 +880,7 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
                 <LabelList dataKey="netGasBOEd" content={segLabel(mbf)}/>
                 <LabelList dataKey="netBOEd"    content={topLabel(mbf)}/>
               </Bar>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -886,6 +896,7 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
                 <LabelList dataKey="grossGasBOEd" content={segLabel(mbf)}/>
                 <LabelList dataKey="grossBOEd"    content={topLabel(mbf)}/>
               </Bar>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -895,7 +906,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={mbf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBpd',n]}/><Legend {...LP}/>
-              <Bar dataKey="netOild" name="Net Oil" fill={C.oil}><LabelList dataKey="netOild" content={topLabel(mbf)}/></Bar>
+              <Bar dataKey="netOild" name="Net Oil" fill={C.oil}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -905,7 +917,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={mbf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBpd',n]}/><Legend {...LP}/>
-              <Bar dataKey="grossOild" name="Gross Oil" fill={C.oil}><LabelList dataKey="grossOild" content={topLabel(mbf)}/></Bar>
+              <Bar dataKey="grossOild" name="Gross Oil" fill={C.oil}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -915,7 +928,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={mbf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMBd(v)+' MBpd',n]}/><Legend {...LP}/>
-              <Bar dataKey="netNGLd" name="Net NGL" fill={C.ngl}><LabelList dataKey="netNGLd" content={topLabel(mbf)}/></Bar>
+              <Bar dataKey="netNGLd" name="Net NGL" fill={C.ngl}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -925,7 +939,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={mmf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMMcfd(v)+' MMcfd',n]}/><Legend {...LP}/>
-              <Bar dataKey="netGasd" name="Net Gas" fill={C.gas}><LabelList dataKey="netGasd" content={topLabel(mmf)}/></Bar>
+              <Bar dataKey="netGasd" name="Net Gas" fill={C.gas}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -935,7 +950,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={mmf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMMcfd(v)+' MMcfd',n]}/><Legend {...LP}/>
-              <Bar dataKey="grossGasd" name="Gross Gas" fill={C.gas}><LabelList dataKey="grossGasd" content={topLabel(mmf)}/></Bar>
+              <Bar dataKey="grossGasd" name="Gross Gas" fill={C.gas}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -946,7 +962,7 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
       <SectionHeader title="Total Cost ($M)"/>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px'}}>
 
-        <ChartCard title="Total LOS ($M)" miniRows={buildMiniRows(data,'totalLOS')} miniFmt={fMdol}>
+        <ChartCard title="Total Lease Operating Statement ($M)" miniRows={buildMiniRows(data,'totalLOS')} miniFmt={fMdol}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
@@ -954,11 +970,12 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <Bar dataKey="var_oil"    name="Var Oil"    fill={C.varOil}    stackId="l"><LabelList dataKey="var_oil"    content={segLabel(dlf)}/></Bar>
               <Bar dataKey="var_water"  name="Var Water"  fill={C.varWater}  stackId="l"><LabelList dataKey="var_water"  content={segLabel(dlf)}/></Bar>
               <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}  stackId="l"><LabelList dataKey="totalFixed"  content={segLabel(dlf)}/></Bar>
-              <Bar dataKey="gpt"        name="GPT"        fill={C.gpt}       stackId="l"><LabelList dataKey="gpt"        content={segLabel(dlf)}/></Bar>
+              <Bar dataKey="gpt"        name="GP&T"        fill={C.gpt}       stackId="l"><LabelList dataKey="gpt"        content={segLabel(dlf)}/></Bar>
               <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes} stackId="l">
                 <LabelList dataKey="prod_taxes" content={segLabel(dlf)}/>
                 <LabelList dataKey="totalLOS"   content={topLabel(dlf)}/>
               </Bar>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -968,7 +985,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="var_oil" name="Var Oil" fill={C.varOil}><LabelList dataKey="var_oil" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="var_oil" name="Var Oil" fill={C.varOil}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -978,7 +996,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="var_water" name="Water" fill={C.varWater}><LabelList dataKey="var_water" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="var_water" name="Water" fill={C.varWater}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -988,17 +1007,19 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}><LabelList dataKey="totalFixed" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="GPT ($M)" miniRows={buildMiniRows(data,'gpt')} miniFmt={fMdol}>
+        <ChartCard title="GP&T ($M)" miniRows={buildMiniRows(data,'gpt')} miniFmt={fMdol}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="gpt" name="GPT" fill={C.gpt}><LabelList dataKey="gpt" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="gpt" name="GP&T" fill={C.gpt}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1008,7 +1029,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="midstream" name="Midstream" fill={C.midstream}><LabelList dataKey="midstream" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="midstream" name="Midstream" fill={C.midstream}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1018,7 +1040,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes}><LabelList dataKey="prod_taxes" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1028,7 +1051,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={dlf}/>
               <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="capex" name="CAPEX" fill={C.capex}><LabelList dataKey="capex" content={topLabel(dlf)}/></Bar>
+              <Bar dataKey="capex" name="CAPEX" fill={C.capex}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1039,12 +1063,13 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
       <SectionHeader title="Unit Cost ($/Boe)"/>
       <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px'}}>
 
-        <ChartCard title="Total LOS ($/Boe)" miniRows={buildMiniRows(data,'costPerBOE')} miniFmt={fB}>
+        <ChartCard title="Total Lease Operating Statement ($/Boe)" miniRows={buildMiniRows(data,'costPerBOE')} miniFmt={fB}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={bof}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt}/>
               <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="costPerBOE" name="LOS/Boe" fill={C.cost}><LabelList dataKey="costPerBOE" content={topLabel(bof)}/></Bar>
+              <Bar dataKey="costPerBOE" name="LOS/Boe" fill={C.cost}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1052,21 +1077,23 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
         <ChartCard title="Var Oil ($/Boe)" miniRows={buildMiniRows(data,'varOilPerBOE')} miniFmt={fB}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={bof}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt}/>
               <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="varOilPerBOE" name="Var Oil/Boe" fill={C.varOil}><LabelList dataKey="varOilPerBOE" content={topLabel(bof)}/></Bar>
+              <Bar dataKey="varOilPerBOE" name="Var Oil/Boe" fill={C.varOil}/>
               {refLines(my.varOil, vdr.varOil, fB)}
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Fixed &amp; Workover ($/Well/mo)" miniRows={buildMiniRows(data,'fixedPerWell')} miniFmt={f$}>
+        <ChartCard title={`Fixed &amp; Workover (${perWellUnitLabel})`} miniRows={buildMiniRows(data,'fixedPerWell')} miniFmt={perWellFmt}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${(v/1000).toFixed(1)}K`}/>
-              <Tooltip {...TP} formatter={(v,n)=>[f$(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="fixedPerWell" name="Fixed+Wkover/Well" fill={C.fixed}><LabelList dataKey="fixedPerWell" content={topLabel(v=>`$${(v/1000).toFixed(1)}K`)}/></Bar>
-              {refLines(my.fixed, vdr.fixed, f$)}
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perWellFmt}/>
+              <Tooltip {...TP} formatter={(v,n)=>[perWellFmt(v),n]}/><Legend {...LP}/>
+              <Bar dataKey="fixedPerWell" name="Fixed+Wkover/Well" fill={C.fixed}/>
+              {refLines(my.fixed, vdr.fixed, perWellFmt)}
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1074,9 +1101,10 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
         <ChartCard title="CAPEX ($/Well/mo)" miniRows={buildMiniRows(data,'capexPerWell')} miniFmt={f$}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${(v/1000).toFixed(1)}K`}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={f$}/>
               <Tooltip {...TP} formatter={(v,n)=>[f$(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="capexPerWell" name="CAPEX/Well" fill={C.capex}><LabelList dataKey="capexPerWell" content={topLabel(v=>`$${(v/1000).toFixed(1)}K`)}/></Bar>
+              <Bar dataKey="capexPerWell" name="CAPEX/Well" fill={C.capex}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1086,8 +1114,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
             <BarChart data={data} margin={CM}>
               <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`${v.toFixed(1)}%`}/>
               <Tooltip {...TP} formatter={(v,n)=>[fP(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="prodTaxPct" name="Prod Tax %" fill={C.prodTaxes}><LabelList dataKey="prodTaxPct" content={topLabel(v=>`${v.toFixed(1)}%`)}/></Bar>
+              <Bar dataKey="prodTaxPct" name="Prod Tax %" fill={C.prodTaxes}/>
               {refLines(my.prodTax, vdr.prodTax, fP)}
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1101,9 +1130,10 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
         <ChartCard title="Realized Oil Price ($/Bbl)" miniRows={buildMiniRows(data,'realizedOil')} miniFmt={fB}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${v.toFixed(0)}`}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt}/>
               <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="realizedOil" name="Realized Oil" fill={C.oil}><LabelList dataKey="realizedOil" content={topLabel(v=>`$${v.toFixed(1)}`)}/></Bar>
+              <Bar dataKey="realizedOil" name="Realized Oil" fill={C.oil}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1111,19 +1141,21 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
         <ChartCard title="Realized NGL Price ($/Bbl)" miniRows={buildMiniRows(data,'realizedNGL')} miniFmt={fB}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${v.toFixed(1)}`}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt}/>
               <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="realizedNGL" name="Realized NGL" fill={C.ngl}><LabelList dataKey="realizedNGL" content={topLabel(v=>`$${v.toFixed(1)}`)}/></Bar>
+              <Bar dataKey="realizedNGL" name="Realized NGL" fill={C.ngl}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Realized Gas Price ($/Mcf)" miniRows={buildMiniRows(data,'realizedGas')} miniFmt={fG}>
+        <ChartCard title="Realized Gas Price ($/Mcf)" miniRows={buildMiniRows(data,'realizedGas')} miniFmt={fG2}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`$${v.toFixed(3)}`}/>
-              <Tooltip {...TP} formatter={(v,n)=>[fG(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="realizedGas" name="Realized Gas" fill={C.gas}><LabelList dataKey="realizedGas" content={topLabel(v=>`$${v.toFixed(3)}`)}/></Bar>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedGasFmt}/>
+              <Tooltip {...TP} formatter={(v,n)=>[fG2(v),n]}/><Legend {...LP}/>
+              <Bar dataKey="realizedGas" name="Realized Gas" fill={C.gas}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1131,9 +1163,10 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
         <ChartCard title="Revenue ($/Boe)" miniRows={buildMiniRows(data,'revenuePerBOE')} miniFmt={fB}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={bof}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt}/>
               <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="revenuePerBOE" name="Revenue/Boe" fill={C.revenue}><LabelList dataKey="revenuePerBOE" content={topLabel(bof)}/></Bar>
+              <Bar dataKey="revenuePerBOE" name="Revenue/Boe" fill={C.revenue}/>
+                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1141,10 +1174,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
         <ChartCard title="Operating Margin ($/Boe)" miniRows={buildMiniRows(data,'marginPerBOE')} miniFmt={fB}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={CM}>
-              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={bof}/>
+              <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt}/>
               <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-              <Bar dataKey="marginPerBOE" name="Margin/Boe" fill={C.margin}><LabelList dataKey="marginPerBOE" content={topLabel(bof)}/></Bar>
-              <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+              <Bar dataKey="marginPerBOE" name="Margin/Boe" fill={C.margin}/>                          <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -1184,18 +1216,18 @@ const WBW_TYPES = [
   { id:'grossGasd',     group:'Gas Production',     label:'Gross Gas (Mcfd)',       pk:'grossGasd',       chartType:'single', fill:C.gas,      fmt:n=>fMcfd(n)+' Mcfd',   tableFmt:fMcfd,  tableLabel:'Gross Gas (Mcfd)'       },
   { id:'grossGastot',   group:'Gas Production',     label:'Gross Gas (Mcf/mo)',     pk:'gross_gas',       chartType:'single', fill:C.gas,      fmt:n=>fMcfd(n)+' Mcf',    tableFmt:fMcfd,  tableLabel:'Gross Gas (Mcf/mo)'     },
   // --- Costs ---
-  { id:'totalLOSm',     group:'Costs ($M)',         label:'Total LOS ($M)',         pk:'totalLOS',        chartType:'costStack',      fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Total LOS ($M)'         },
+  { id:'totalLOSm',     group:'Costs ($M)',         label:'Total Lease Operating Statement ($M)', pk:'totalLOS', chartType:'costStack', fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Total Lease Operating Statement ($M)'         },
   { id:'costPerBOE',    group:'Costs ($M)',         label:'LOS ($/Boe)',            pk:'costPerBOE',      chartType:'single', fill:'#C55A11', fmt:fB, tableFmt:n=>n.toFixed(2), tableLabel:'LOS ($/Boe)'           },
   { id:'varOilm',       group:'Costs ($M)',         label:'Var Oil Exp ($M)',       pk:'var_oil',         chartType:'single', fill:C.varOil,  fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Var Oil Exp ($M)'   },
   { id:'varOilPerBOE',  group:'Costs ($M)',         label:'Var Oil ($/Boe)',        pk:'varOilPerBOE',    chartType:'single', fill:C.varOil,  fmt:fB, tableFmt:n=>n.toFixed(2), tableLabel:'Var Oil ($/Boe)'         },
   { id:'varWaterm',     group:'Costs ($M)',         label:'Water Exp ($M)',         pk:'var_water',       chartType:'single', fill:C.varWater, fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Water Exp ($M)'    },
   { id:'varWaterPerBw', group:'Costs ($M)',         label:'Water ($/mo)',           pk:'varWaterPerMonth', chartType:'single', fill:C.varWater, fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Water ($/mo)'     },
   { id:'fixedm',        group:'Costs ($M)',         label:'Fixed Exp ($M)',         pk:'fixed',           chartType:'single', fill:C.fixed,   fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Fixed Exp ($M)'     },
-  { id:'fixedPerWell',  group:'Costs ($M)',         label:'Fixed ($/Well/mo)',      pk:'fixedPerWell',    chartType:'single', fill:C.fixed,   fmt:f$, tableFmt:n=>n.toFixed(0), tableLabel:'Fixed ($/Well/mo)'          },
+  { id:'fixedPerWell',  group:'Costs ($M)',         label:'Fixed ($/Well/mo)',      pk:'fixedPerWell',    chartType:'single', fill:C.fixed,   fmt:n=>fmtMoneyScaled(n,1000,1), tableFmt:n=>(n/1000).toFixed(1), tableLabel:'Fixed ($/Well/mo)'          },
   // --- Realized Prices ---
   { id:'realizedOil',   group:'Realized Prices',   label:'Oil ($/Bbl)',            pk:'realizedOil',     chartType:'single', fill:C.oil,     fmt:fB, tableFmt:n=>n.toFixed(2), tableLabel:'Realized Oil ($/Bbl)'        },
   { id:'realizedNGL',   group:'Realized Prices',   label:'NGL (% WTI)',            pk:'realizedNGL',     chartType:'single', fill:C.ngl,     fmt:fB, tableFmt:n=>n.toFixed(2), tableLabel:'Realized NGL ($/Bbl est.)'   },
-  { id:'realizedGas',   group:'Realized Prices',   label:'Gas ($/Mcf)',            pk:'realizedGas',     chartType:'single', fill:C.gas,     fmt:fG, tableFmt:n=>n.toFixed(3), tableLabel:'Realized Gas ($/Mcf)'        },
+  { id:'realizedGas',   group:'Realized Prices',   label:'Gas ($/Mcf)',            pk:'realizedGas',     chartType:'single', fill:C.gas,     fmt:fG2, tableFmt:n=>n.toFixed(2), tableLabel:'Realized Gas ($/Mcf)'        },
   // --- Production Taxes ---
   { id:'prodTaxm',      group:'Taxes',             label:'Prod Taxes ($M)',        pk:'prod_taxes',      chartType:'single', fill:'#C55A11', fmt:fMdol, tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Prod Taxes ($M)'    },
   { id:'prodTaxPct',    group:'Taxes',             label:'Prod Tax (% Rev)',       pk:'prodTaxPct',      chartType:'single', fill:'#C55A11', fmt:fP, tableFmt:n=>n.toFixed(2), tableLabel:'Prod Tax (% Revenue)'         },
@@ -1228,7 +1260,8 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
         <LabelList dataKey="netGasBOEd" content={segLabel(sf)}/>
         <LabelList dataKey="netBOEd" content={topLabel(tf)}/>
       </Bar>
-    </BarChart>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+            </BarChart>
   }
   if (ct === 'boeStackM') {
     const sf = n => n.toFixed(0), tf = n => n.toFixed(0)
@@ -1240,7 +1273,8 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
         <LabelList dataKey="netGasBOE" content={segLabel(sf)}/>
         <LabelList dataKey="netBOE" content={topLabel(tf)}/>
       </Bar>
-    </BarChart>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+            </BarChart>
   }
   if (ct === 'grossBoeStackD') {
     const sf = n => n.toFixed(1), tf = n => n.toFixed(1)
@@ -1252,7 +1286,8 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
         <LabelList dataKey="grossGasBOEd" content={segLabel(sf)}/>
         <LabelList dataKey="grossBOEd" content={topLabel(tf)}/>
       </Bar>
-    </BarChart>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+            </BarChart>
   }
   if (ct === 'grossBoeStackM') {
     const sf = n => n.toFixed(0), tf = n => n.toFixed(0)
@@ -1264,21 +1299,23 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
         <LabelList dataKey="grossGasBOE" content={segLabel(sf)}/>
         <LabelList dataKey="grossBOE" content={topLabel(tf)}/>
       </Bar>
-    </BarChart>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+            </BarChart>
   }
   if (ct === 'costStack') {
-    const sf = n => `$${(n/1e6).toFixed(1)}M`, tf = n => `$${(n/1e6).toFixed(1)}M`
-    return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={n=>`$${(n/1e6).toFixed(1)}M`}/>
+    const sf = n => fmtMoneyScaled(n, 1e6, 1), tf = n => fmtMoneyScaled(n, 1e6, 1)
+    return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={n=>fmtMoneyScaled(n, 1e6, 1)}/>
       <Tooltip {...TP} formatter={(v,n)=>[fMdol(v),n]}/>
       <Bar dataKey="var_oil"    name="Var Oil"     fill={C.varOil}    stackId="c"><LabelList dataKey="var_oil"    content={segLabel(sf)}/></Bar>
       <Bar dataKey="var_water"  name="Water"       fill={C.varWater}  stackId="c"><LabelList dataKey="var_water"  content={segLabel(sf)}/></Bar>
       <Bar dataKey="totalFixed" name="Fixed+Wkover" fill={C.fixed}    stackId="c"><LabelList dataKey="totalFixed" content={segLabel(sf)}/></Bar>
-      <Bar dataKey="gpt"        name="GPT"         fill={C.gpt}       stackId="c"><LabelList dataKey="gpt"        content={segLabel(sf)}/></Bar>
+      <Bar dataKey="gpt"        name="GP&T"         fill={C.gpt}       stackId="c"><LabelList dataKey="gpt"        content={segLabel(sf)}/></Bar>
       <Bar dataKey="prod_taxes" name="Taxes"       fill={C.prodTaxes} stackId="c">
         <LabelList dataKey="prod_taxes" content={segLabel(sf)}/>
         <LabelList dataKey="totalLOS"   content={topLabel(tf)}/>
       </Bar>
-    </BarChart>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+            </BarChart>
   }
   // Default: single bar
   const { pk, fill } = typeDef
@@ -1287,8 +1324,10 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const isDol = ['var_oil','var_water','fixed','totalFixed','gpt','workover','prod_taxes','capex','totalLOS','assetFCF'].includes(pk)
   const isPct = pk === 'prodTaxPct'
   const isGas = pk === 'realizedGas'
+  const isPerWellK = pk === 'fixedPerWell'
+  const isPerUnit2 = ['costPerBOE','varOilPerBOE','revenuePerBOE','marginPerBOE','realizedOil','realizedNGL','midstreamPerBOE'].includes(pk)
   // Raw units for individual wells: Boed/Bpd for BOE/oil/NGL; Mcfd for gas
-  const axFmt = isMM ? n=>n.toFixed(1) : isBoe ? n=>n.toFixed(1) : isDol ? n=>`$${(n/1e6).toFixed(1)}M` : isPct ? n=>`${n.toFixed(1)}%` : isGas ? n=>`$${n.toFixed(3)}` : n=>`$${n.toFixed(1)}`
+  const axFmt = isMM ? n=>n.toFixed(1) : isBoe ? n=>n.toFixed(1) : isPerWellK ? n=>fmtMoneyScaled(n,1000,1) : isDol ? n=>fmtMoneyScaled(n,1e6,1) : isPct ? n=>`${n.toFixed(1)}%` : isGas ? n=>fmtMoney(n,2) : isPerUnit2 ? n=>fmtMoney(n,2) : n=>fmtMoney(n,1)
   const ttFmt = typeDef.fmt
   const myRef = pk==='varOilPerBOE'&&my.varOil ? <ReferenceLine y={my.varOil} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='fixedPerWell'&&my.fixed   ? <ReferenceLine y={my.fixed}  stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
@@ -1296,11 +1335,10 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
               : null
   return <BarChart {...base}><CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={axFmt}/>
     <Tooltip {...TP} formatter={v=>[ttFmt(v)]}/>
-    <Bar dataKey={pk} fill={fill||C.oil}>
-      <LabelList dataKey={pk} content={topLabel(axFmt)}/>
-    </Bar>
+    <Bar dataKey={pk} fill={fill||C.oil}/>
     {myRef}
-  </BarChart>
+                <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+            </BarChart>
 }
 
 const WellCard = memo(function WellCard({ well, typeDef, ariesInputs, pctOfTotal, yDomain }) {
@@ -2137,3 +2175,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>)
 </script>
 </body>
 </html>
+
+
+
+

@@ -1,0 +1,175 @@
+// ─── Aggregation selectors ────────────────────────────────────────────────────
+// All functions here are pure (no React, no DOM, no I/O).
+
+import { emptyM, accum, metrics, daysInMonth, GAS_BOE } from '../domain/metrics.js'
+
+// ─── Monthly portfolio rollup ─────────────────────────────────────────────────
+
+export function buildMonthlyRollup(rows) {
+  const mm = {}, mw = {}
+  for (const r of rows) {
+    if (!r.bucket || r.bucket === 'ignore') continue
+    const k = r.monthKey
+    if (!mm[k]) { mm[k] = emptyM(r.date, r.monthKey, r.monthDisp); mw[k] = new Set() }
+    if (r.bucket !== 'capex') mw[k].add(r.wellName)
+    accum(mm[k], r)
+  }
+  return Object.values(mm)
+    .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+    .map(m => metrics(m, mw[m.monthKey].size))
+}
+
+// ─── Per-well aggregation ─────────────────────────────────────────────────────
+
+export function buildWellData(rows) {
+  const wm = {}
+  for (const r of rows) {
+    if (!r.wellName) continue
+    const wn = r.wellName
+    if (!wm[wn]) wm[wn] = { wellName: wn, jpRp: r.jpRp, opObo: r.opObo, nri: r.nri, wi: r.wi, months: {} }
+    const w = wm[wn]
+    // Update well-level metadata from later rows (last non-empty wins)
+    if (r.jpRp)  w.jpRp  = r.jpRp
+    if (r.opObo) w.opObo = r.opObo
+    if (r.nri)   w.nri   = r.nri
+    if (r.wi)    w.wi    = r.wi
+    if (!r.bucket || r.bucket === 'ignore') continue
+    const k = r.monthKey
+    if (!w.months[k]) w.months[k] = emptyM(r.date, r.monthKey, r.monthDisp)
+    accum(w.months[k], r)
+  }
+  return Object.values(wm)
+    .sort((a, b) => a.wellName.localeCompare(b.wellName))
+    .map(w => ({
+      ...w,
+      monthlyData: Object.values(w.months)
+        .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+        .map(m => metrics(m, 1)),
+    }))
+}
+
+// ─── LOS table category aggregation ──────────────────────────────────────────
+// Returns { months, catMap } for use by the LOS Table tab.
+// catMap: { [losLabel]: { bucket, months: { [monthKey]: { amount, volume } } } }
+
+export function buildLOSCatData(rawRows, isGross) {
+  const mMap = {}, catMap = {}
+  for (const r of rawRows) {
+    if (r.bucket === 'ignore') continue
+    const label = r.los || r.cat || null
+    if (!label) continue
+    if (!mMap[r.monthKey]) mMap[r.monthKey] = { key: r.monthKey, disp: r.monthDisp, date: r.date }
+    if (!catMap[label]) catMap[label] = { bucket: r.bucket, months: {} }
+    if (!catMap[label].months[r.monthKey]) catMap[label].months[r.monthKey] = { amount: 0, volume: 0 }
+    const d      = catMap[label].months[r.monthKey]
+    const rawAmt = isGross ? r.grossAmount : r.netAmount
+    const rawVol = isGross ? r.grossVolume : r.netVolume
+    const isRev  = r.bucket === 'oil' || r.bucket === 'gas' || r.bucket === 'ngl'
+    // Revenue is stored negative in source — flip sign for display
+    d.amount += isRev ? -rawAmt : rawAmt
+    // NGL volume comes in as gallons — convert to BBL
+    d.volume += r.bucket === 'ngl' ? Math.abs(rawVol) / 42 : Math.abs(rawVol)
+  }
+  return {
+    months: Object.values(mMap).sort((a, b) => a.key.localeCompare(b.key)),
+    catMap,
+  }
+}
+
+// ─── Row filter selector ──────────────────────────────────────────────────────
+// Computes the modal lift type per well (using all rows) so that a single
+// stray JP/RP tag on an ALLOC well doesn't override its true classification.
+
+export function filterRows(rows, opFilter, liftFilter) {
+  if (!rows) return null
+
+  let filtered = rows
+
+  if (opFilter !== 'all') {
+    filtered = filtered.filter(r => {
+      const v = (r.opObo || '').toUpperCase().trim()
+      const isOp  = v === 'OP'  || v === 'OPERATED'
+      const isObo = v === 'OBO' || v === 'NON-OPERATED' || v === 'NON-OP' || v.startsWith('NON')
+      if (opFilter === 'op'  && !isOp)  return false
+      if (opFilter === 'obo' && !isObo) return false
+      return true
+    })
+  }
+
+  if (liftFilter.length > 0) {
+    // Build modal lift type per well across all (unfiltered) rows
+    const counts = {}
+    for (const r of rows) {
+      const j = (r.jpRp || '').toUpperCase().trim()
+      if (!counts[r.wellName]) counts[r.wellName] = {}
+      counts[r.wellName][j] = (counts[r.wellName][j] || 0) + 1
+    }
+    const wellJpRp = {}
+    for (const [wn, c] of Object.entries(counts)) {
+      wellJpRp[wn] = Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]
+    }
+
+    filtered = filtered.filter(r => {
+      const j   = wellJpRp[r.wellName] || ''
+      const isJP = j === 'JP', isRP = j === 'RP'
+      return (liftFilter.includes('jp')    && isJP)
+          || (liftFilter.includes('rp')    && isRP)
+          || (liftFilter.includes('other') && !isJP && !isRP)
+    })
+  }
+
+  return filtered
+}
+
+// ─── ARIES active-inputs selector ─────────────────────────────────────────────
+// Flattens the nested op/obo state to a single case pair for chart overlays.
+// opFilter 'obo' → obo sub-case; anything else → op sub-case.
+
+export function selectActiveInputs(ariesInputs, opFilter) {
+  const sub = opFilter === 'obo' ? 'obo' : 'op'
+  return {
+    vdrCase: ariesInputs.vdrCase[sub],
+    myCase:  ariesInputs.myCase[sub],
+  }
+}
+
+// Attach benchmark "actual" prices and index-minus-realized differential metrics
+// to monthly rollup and well-by-well series using month-key joins.
+export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows) {
+  const byMonth = {}
+  ;(pricingRows || []).forEach(p => {
+    if (p?.monthKey) byMonth[p.monthKey] = p
+  })
+
+  const pick = (...vals) => {
+    for (const v of vals) {
+      if (v != null && isFinite(v)) return Number(v)
+    }
+    return null
+  }
+
+  const withPricing = m => {
+    const p = byMonth[m.monthKey] || {}
+    const actualOil = pick(p.meh, p.wti)
+    const actualGas = pick(p.hsc, p.henryHub)
+    const actualNGL = pick(p.wti)
+
+    return {
+      ...m,
+      actualOilPrice: actualOil,
+      actualGasPrice: actualGas,
+      actualNGLPrice: actualNGL,
+      oilDifferential: actualOil != null ? (actualOil - m.realizedOil) : null,
+      gasDifferential: actualGas != null ? (actualGas - m.realizedGas) : null,
+      nglDifferential: actualNGL != null ? (actualNGL - m.realizedNGL) : null,
+    }
+  }
+
+  return {
+    monthlyRollup: (monthlyRollup || []).map(withPricing),
+    wellData: (wellData || []).map(w => ({
+      ...w,
+      monthlyData: (w.monthlyData || []).map(withPricing),
+    })),
+  }
+}
