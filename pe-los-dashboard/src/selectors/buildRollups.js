@@ -195,7 +195,8 @@ export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
       actualNGLPrice: actualNGL,
       oilDifferential: actualOil != null ? (m.realizedOil - actualOil) : null,
       gasDifferential: actualGas != null ? (m.realizedGas - actualGas) : null,
-      nglDifferential: actualNGL != null ? (m.realizedNGL - actualNGL) : null,
+      // NGL differential is defined as realized NGL price divided by WTI.
+      nglDifferential: (actualNGL != null && actualNGL !== 0) ? (m.realizedNGL / actualNGL) : null,
     }
   }
 

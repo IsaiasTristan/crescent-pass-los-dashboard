@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs } from '../selectors/buildRollups.js'
+import { buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs, attachPricingDifferentials } from '../selectors/buildRollups.js'
 
 // ─── Shared test data factory ─────────────────────────────────────────────────
 
@@ -317,5 +317,27 @@ describe('buildLOSCatData', () => {
     const out = buildLOSCatData(rows, false)
     expect(out.catMap['Oil'].months['2024-01'].amount).toBeCloseTo(3000)
     expect(out.catMap['Oil'].months['2024-01'].volume).toBe(30)
+  })
+})
+
+// ─── attachPricingDifferentials ────────────────────────────────────────────────
+
+describe('attachPricingDifferentials', () => {
+  it('computes NGL differential as realized NGL divided by WTI', () => {
+    const monthlyRollup = [{
+      monthKey: '2024-01',
+      realizedOil: 70,
+      realizedGas: 2.2,
+      realizedNGL: 24.5,
+    }]
+    const wellData = [{
+      wellName: 'Well A',
+      monthlyData: [{ monthKey: '2024-01', realizedOil: 70, realizedGas: 2.2, realizedNGL: 24.5 }],
+    }]
+    const pricingRows = [{ monthKey: '2024-01', meh: 72, hsc: 2.0, wti: 70 }]
+
+    const out = attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
+    expect(out.monthlyRollup[0].nglDifferential).toBeCloseTo(0.35)
+    expect(out.wellData[0].monthlyData[0].nglDifferential).toBeCloseTo(0.35)
   })
 })

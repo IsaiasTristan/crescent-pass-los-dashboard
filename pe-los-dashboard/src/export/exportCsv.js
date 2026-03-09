@@ -96,7 +96,7 @@ export function exportHistorical(wellData) {
         'Actual NGL ($/BBL)':   m.actualNGLPrice != null ? m.actualNGLPrice.toFixed(2) : '',
         'Oil Diff ($/BBL)':     m.oilDifferential != null ? m.oilDifferential.toFixed(2) : '',
         'Gas Diff ($/MCF)':     m.gasDifferential != null ? m.gasDifferential.toFixed(2) : '',
-        'NGL Diff ($/BBL)':     m.nglDifferential != null ? m.nglDifferential.toFixed(2) : '',
+        'NGL Diff (% of WTI)':  m.nglDifferential != null ? (m.nglDifferential * 100).toFixed(2) : '',
       })
     }
   }

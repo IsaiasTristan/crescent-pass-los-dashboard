@@ -73,6 +73,7 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   const perUnitFmt = n => fmtMoney(n, 2)
   const realizedFmt = n => fmtMoney(n, 2)
   const realizedGasFmt = n => fmtMoney(n, 2)
+  const nglRatioFmt = n => (n == null || !isFinite(n)) ? '--' : `${(Number(n) * 100).toFixed(1)}%`
   const kpf = n => fmtMoneyScaled(n, 1000, 1)
   const perWellUnitLabel = '$M/Well/mo'
 
@@ -637,14 +638,14 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           )}
         </ChartCard>
 
-        <ChartCard title="NGL Differential (Realized - WTI, $/Bbl)" ltmAvg={ltm.nglDifferential} ltmFmt={fB}>
+        <ChartCard title="NGL Differential (Realized / WTI, %)" ltmAvg={ltm.nglDifferential} ltmFmt={nglRatioFmt}>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
-                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
-                <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={nglRatioFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[nglRatioFmt(v),n]}/><Legend {...LP}/>
                 <Bar dataKey="nglDifferential" name="NGL Differential" fill={C.differential}>
-                  <LabelList dataKey="nglDifferential" content={topLabel(fB)}/>
+                  <LabelList dataKey="nglDifferential" content={topLabel(nglRatioFmt)}/>
                 </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
@@ -885,18 +886,20 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const isBoe = ['netOild','netNGLd','grossOild','grossNGLd','oil_vol','ngl_vol','gross_oil','gross_ngl','netBOEd','netBOE','grossBOEd','grossBOE'].includes(pk)
   const isDol = ['var_oil','var_water','fixed','totalFixed','gpt','workover','prod_taxes','capex','totalLOS','assetFCF'].includes(pk)
   const isPct = pk === 'prodTaxPct'
+  const isRatioPct = pk === 'nglDifferential'
   const isGas = pk === 'realizedGas' || pk === 'actualGasPrice' || pk === 'gasDifferential'
   const isPerWellK = pk === 'fixedPerWell'
   const isPerUnit2 = [
     'costPerBOE','varOilPerBOE','gptPerBOE','revenuePerBOE','marginPerBOE',
     'realizedOil','realizedNGL','actualOilPrice','actualNGLPrice',
-    'oilDifferential','nglDifferential','midstreamPerBOE',
+    'oilDifferential','midstreamPerBOE',
   ].includes(pk)
   const axFmt = isMM  ? n=>n.toFixed(1)
               : isBoe ? n=>n.toFixed(1)
               : isPerWellK ? n=>fmtMoneyScaled(n, 1000, 1)
               : isDol ? n=>fmtMoneyScaled(n, 1e6, 1)
               : isPct ? n=>`${n.toFixed(1)}%`
+              : isRatioPct ? n=>`${(n*100).toFixed(1)}%`
               : isGas ? n=>fmtMoney(n, 2)
               : isPerUnit2 ? n=>fmtMoney(n, 2)
               :         n=>fmtMoney(n, 1)
