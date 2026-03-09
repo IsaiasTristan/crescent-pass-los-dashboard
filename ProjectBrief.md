@@ -365,6 +365,11 @@ DISCORD_CHANNEL_ID  = your-channel-id
 
 ## Session Log (reverse chronological)
 
+**2026-03-09 — Session 14**
+- Historical gross-volume CSV ingest added for the Vite app. Uploads can match LOS wells by normalized Well Name, Applicable Tag, or Property Name.
+- Gross water is converted to net water using `gross water / WI` per user instruction, and the resulting net water volume now drives historical `varWaterPerBBL = var_water / net_water_volume`.
+- Water unit-cost history now flows through ARIES historical averages, Asset Rollup unit-cost charts, Well by Well chart types, and historical export fields.
+
 **2026-03-08 — Session 13**
 - **Canonical module architecture:** Extracted all domain logic from `App.jsx` into dedicated modules (see updated File Structure above). `App.jsx` reduced from ~2,334 lines to orchestration only.
 - **New modules created:** `src/ingest/parseCsv.js`, `src/domain/metrics.js`, `src/selectors/buildRollups.js`, `src/export/exportCsv.js`, `src/charts/chartConfig.js`, `src/utils/formatters.js`, `src/constants/wbwTypes.js`.

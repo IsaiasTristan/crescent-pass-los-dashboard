@@ -60,9 +60,22 @@ export function buildWellData(rows) {
   for (const r of rows) {
     if (!r.wellName) continue
     const wn = r.wellName
-    if (!wm[wn]) wm[wn] = { wellName: wn, jpRp: r.jpRp, opObo: r.opObo, nri: r.nri, wi: r.wi, months: {} }
+    if (!wm[wn]) {
+      wm[wn] = {
+        wellName: wn,
+        propertyNum: r.propertyNum,
+        propertyName: r.propertyName,
+        jpRp: r.jpRp,
+        opObo: r.opObo,
+        nri: r.nri,
+        wi: r.wi,
+        months: {},
+      }
+    }
     const w = wm[wn]
     // Update well-level metadata from later rows (last non-empty wins)
+    if (r.propertyNum) w.propertyNum = r.propertyNum
+    if (r.propertyName) w.propertyName = r.propertyName
     if (r.jpRp)  w.jpRp  = r.jpRp
     if (r.opObo) w.opObo = r.opObo
     if (r.nri)   w.nri   = r.nri
@@ -207,4 +220,149 @@ export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
       monthlyData: (w.monthlyData || []).map(withPricing),
     })),
   }
+}
+
+function normalizeIdentifier(value) {
+  return (value || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+function buildIdentifierMap(wellData) {
+  const exact = new Map()
+  const ambiguous = new Set()
+
+  const add = (identifier, wellName) => {
+    const normalized = normalizeIdentifier(identifier)
+    if (!normalized) return
+    const existing = exact.get(normalized)
+    if (existing && existing !== wellName) {
+      exact.delete(normalized)
+      ambiguous.add(normalized)
+      return
+    }
+    if (!ambiguous.has(normalized)) exact.set(normalized, wellName)
+  }
+
+  ;(wellData || []).forEach(well => {
+    add(well.wellName, well.wellName)
+    add(well.propertyNum, well.wellName)
+    add(well.propertyName, well.wellName)
+  })
+
+  return { exact, ambiguous }
+}
+
+function initHistoricalVolumeFields(target) {
+  return {
+    ...target,
+    histGrossOilVolume: target.histGrossOilVolume ?? null,
+    histGrossGasVolume: target.histGrossGasVolume ?? null,
+    histGrossNGLVolume: target.histGrossNGLVolume ?? null,
+    histGrossWaterVolume: target.histGrossWaterVolume ?? null,
+    histNetWaterVolume: target.histNetWaterVolume ?? null,
+    varWaterPerBBL: target.varWaterPerBBL ?? null,
+  }
+}
+
+export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows) {
+  const rollupOut = (monthlyRollup || []).map(m => initHistoricalVolumeFields(m))
+  const wellOut = (wellData || []).map(w => ({
+    ...w,
+    monthlyData: (w.monthlyData || []).map(m => initHistoricalVolumeFields(m)),
+  }))
+  if (!volumeRows || !volumeRows.length || !wellOut.length) {
+    return { monthlyRollup: rollupOut, wellData: wellOut, warnings: [], histNetWaterByMonth: [] }
+  }
+
+  const { exact, ambiguous } = buildIdentifierMap(wellOut)
+  const wellByName = Object.fromEntries(wellOut.map(w => [w.wellName, w]))
+  const monthRollupByKey = Object.fromEntries(rollupOut.map(m => [m.monthKey, m]))
+  let unmatchedCount = 0
+  let unmatchedMonthCount = 0
+  let zeroWiCount = 0
+
+  // Accumulates net water for ALL matched-well rows regardless of whether the month
+  // exists in the LOS data — enables a full historical net water chart.
+  const histNetWaterMap = {}
+
+  const addVolume = (obj, key, value) => {
+    if (value == null || !isFinite(value)) return
+    obj[key] = (obj[key] ?? 0) + value
+  }
+
+  for (const row of volumeRows) {
+    const candidates = [row.applicableTag, row.wellName, row.propertyName]
+      .map(normalizeIdentifier)
+      .filter(Boolean)
+
+    let matchedWellName = null
+    for (const candidate of candidates) {
+      if (ambiguous.has(candidate)) continue
+      matchedWellName = exact.get(candidate) || null
+      if (matchedWellName) break
+    }
+
+    if (!matchedWellName) {
+      unmatchedCount++
+      continue
+    }
+
+    const well = wellByName[matchedWellName]
+    const wi = Number(well.wi)
+    const hasWater = row.grossWaterVolume != null && isFinite(row.grossWaterVolume)
+    const netWaterVolume = hasWater && wi > 0 ? row.grossWaterVolume / wi : null
+    if (hasWater && !(wi > 0)) zeroWiCount++
+
+    // Always accumulate in the full historical net water series.
+    if (netWaterVolume != null) {
+      if (!histNetWaterMap[row.monthKey]) {
+        histNetWaterMap[row.monthKey] = { monthKey: row.monthKey, monthDisp: row.monthDisp, netWater: 0, grossWater: 0 }
+      }
+      histNetWaterMap[row.monthKey].netWater += netWaterVolume
+      histNetWaterMap[row.monthKey].grossWater += row.grossWaterVolume || 0
+    }
+
+    // Attach to LOS months for varWaterPerBBL calculation.
+    const wellMonth = (well?.monthlyData || []).find(m => m.monthKey === row.monthKey)
+    const rollupMonth = monthRollupByKey[row.monthKey]
+    if (!wellMonth || !rollupMonth) {
+      unmatchedMonthCount++
+      continue
+    }
+
+    for (const target of [wellMonth, rollupMonth]) {
+      addVolume(target, 'histGrossOilVolume', row.grossOilVolume)
+      addVolume(target, 'histGrossGasVolume', row.grossGasVolume)
+      addVolume(target, 'histGrossNGLVolume', row.grossNGLVolume)
+      addVolume(target, 'histGrossWaterVolume', row.grossWaterVolume)
+      addVolume(target, 'histNetWaterVolume', netWaterVolume)
+    }
+  }
+
+  for (const well of wellOut) {
+    for (const month of well.monthlyData) {
+      month.varWaterPerBBL = month.histNetWaterVolume ? month.var_water / month.histNetWaterVolume : null
+    }
+  }
+  for (const month of rollupOut) {
+    month.varWaterPerBBL = month.histNetWaterVolume ? month.var_water / month.histNetWaterVolume : null
+  }
+
+  const histNetWaterByMonth = Object.values(histNetWaterMap)
+    .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
+
+  const warnings = []
+  if (unmatchedCount > 0) {
+    warnings.push(`${unmatchedCount} historical gross-volume row(s) could not be matched to any LOS well and were excluded.`)
+  }
+  if (unmatchedMonthCount > 0) {
+    warnings.push(
+      `${unmatchedMonthCount} historical gross-volume row(s) matched a well but fall outside the LOS date range — ` +
+      `these are included in the historical net water chart but cannot be used for cost-per-BBL (expected for multi-year production histories).`
+    )
+  }
+  if (zeroWiCount > 0) {
+    warnings.push(`${zeroWiCount} historical gross-water row(s) had a zero or missing WI, so net water volume could not be calculated.`)
+  }
+
+  return { monthlyRollup: rollupOut, wellData: wellOut, warnings, histNetWaterByMonth }
 }

@@ -90,7 +90,7 @@ export const ARIES_INPUT_FIELDS = [
   { key: 'rpWorkoverPerWellMonth', label: 'RP Workover',        unit: '$/well/month',   lowerIsBetter: true,  histKey: null,           fmt: v => `$${Number(v).toLocaleString('en-US',{maximumFractionDigits:0})}` },
   { key: 'varOilPerBOE',           label: 'Variable Oil Costs', unit: '$/BOE',           lowerIsBetter: true,  histKey: 'varOilPerBOE', fmt: v => `$${Number(v).toFixed(2)}` },
   { key: 'gptPerBOE',              label: 'GP&T',               unit: '$/BOE',           lowerIsBetter: true,  histKey: 'gptPerBOE',    fmt: v => `$${Number(v).toFixed(2)}` },
-  { key: 'varWaterPerBBL',         label: 'Variable Water',     unit: '$/BBL water',     lowerIsBetter: true,  histKey: null,           fmt: v => `$${Number(v).toFixed(2)}` },
+  { key: 'varWaterPerBBL',         label: 'Variable Water',     unit: '$/BBL water',     lowerIsBetter: true,  histKey: 'varWaterPerBBL', fmt: v => `$${Number(v).toFixed(2)}` },
   { key: 'prodTaxPct',             label: 'Production Taxes',   unit: '% of revenue',   lowerIsBetter: true,  histKey: 'prodTaxPct',   fmt: v => `${Number(v).toFixed(2)}%` },
   { key: 'oilDiff',                label: 'Oil Differential',   unit: '$/BBL vs. WTI',  lowerIsBetter: false, histKey: null,           fmt: v => `$${Number(v).toFixed(2)}` },
   { key: 'gasDiff',                label: 'Gas Differential',   unit: '$/MMBTU vs. HH', lowerIsBetter: false, histKey: null,           fmt: v => `$${Number(v).toFixed(3)}` },
@@ -132,7 +132,7 @@ export const TABS = [
   { id: 'rollup',          label: 'Asset Rollup' },
   { id: 'wellbywell',      label: 'Well by Well Charts' },
   { id: 'wellbywelltable', label: 'LOS Table' },
-  { id: 'historicalpricing', label: 'Historical Pricing' },
+  { id: 'historicalpricing', label: 'Historical Inputs' },
 ]
 
 // LOS table sections that are treated as "recurring" LOE (name-based, not bucket-based)

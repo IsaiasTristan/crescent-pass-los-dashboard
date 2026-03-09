@@ -346,6 +346,7 @@ export function parseCSVText(text) {
       monthKey:    monthKey(date),
       monthDisp:   monthDisp(date),
       propertyNum: (r[col.PROPERTY_NUM]  || '').toString().trim(),
+      propertyName:(r[col.PROPERTY_NAME] || '').toString().trim(),
       opObo:       (r[col.OP_OBO]        || '').toString().trim(),
       bucket,
       netVolume:   isNaN(netVolumeParsed) ? 0 : netVolumeParsed,

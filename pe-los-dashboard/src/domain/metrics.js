@@ -101,6 +101,7 @@ export function metrics(m, wellCount, splitCounts = {}) {
     varOilPerBOE:     sd(m.var_oil, m.oil_vol + m.ngl_vol),
     gptPerBOE:        sd(m.gpt, netBOE),
     varWaterPerMonth: m.var_water,
+    varWaterPerBBL:   null,
     fixedPerWell:     sd(m.fixed + m.workover, wellCount),
     fixedOnlyPerWell: sd(m.fixed, wellCount),
     workoverPerWell:  sd(m.workover, wellCount),

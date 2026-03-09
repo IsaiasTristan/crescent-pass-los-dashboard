@@ -101,4 +101,6 @@ Agents implement features and fixes per `ProjectBrief.md`, keep this file and `P
 
 ## Sync instruction
 
+Current implementation note: the Vite app now supports a separate historical gross-volume CSV upload. Matching is done by normalized Well Name / Applicable Tag / Property Name, and historical water unit cost uses `gross water / WI` to derive net water volume before calculating `varWaterPerBBL`.
+
 When you change Cursor rules (e.g. in `.cursor/rules/`) or update `ProjectBrief.md`, update this file so terminal and other agents keep the same guidance. Do not add or remove rules here; mirror only.

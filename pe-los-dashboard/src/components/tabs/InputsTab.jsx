@@ -197,7 +197,7 @@ export function InputsTab({ ariesInputs, setAriesInputs, monthlyRollup }) {
             <li>Fixed costs: flat $/well/month, no escalation</li>
             <li>Variable Oil: applied to oil + NGL production (BOE)</li>
             <li>GP&amp;T: benchmarked on a $/BOE basis</li>
-            <li>Variable Water: water volumes not in LOS - shown as $/month</li>
+            <li>Variable Water: historical $/BBL uses uploaded gross water volumes converted to net with gross water / WI</li>
             <li>Production Taxes: % of gross revenue</li>
             <li>Oil differential: $/BBL vs. WTI (negative = discount)</li>
             <li>Gas differential: $/MMBTU vs. Henry Hub</li>

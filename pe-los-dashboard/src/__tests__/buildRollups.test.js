@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs, attachPricingDifferentials } from '../selectors/buildRollups.js'
+import { buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs, attachPricingDifferentials, attachHistoricalVolumes } from '../selectors/buildRollups.js'
 
 // ─── Shared test data factory ─────────────────────────────────────────────────
 
@@ -359,5 +359,56 @@ describe('attachPricingDifferentials', () => {
     const out = attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
     expect(out.monthlyRollup[0].nglDifferential).toBeCloseTo(0.35)
     expect(out.wellData[0].monthlyData[0].nglDifferential).toBeCloseTo(0.35)
+  })
+})
+
+describe('attachHistoricalVolumes', () => {
+  it('matches historical gross water by applicable tag and derives net water unit cost', () => {
+    const monthlyRollup = [{
+      monthKey: '2024-01',
+      monthDisp: "Jan '24",
+      var_water: 1000,
+    }]
+    const wellData = [{
+      wellName: 'Well A',
+      propertyNum: 'TAG-001',
+      propertyName: 'Property A',
+      wi: 0.5,
+      monthlyData: [{
+        monthKey: '2024-01',
+        monthDisp: "Jan '24",
+        var_water: 1000,
+      }],
+    }]
+    const volumeRows = [{
+      monthKey: '2024-01',
+      monthDisp: "Jan '24",
+      applicableTag: 'TAG-001',
+      wellName: '',
+      propertyName: '',
+      grossOilVolume: 100,
+      grossGasVolume: 200,
+      grossNGLVolume: 25,
+      grossWaterVolume: 500,
+    }]
+
+    const out = attachHistoricalVolumes(monthlyRollup, wellData, volumeRows)
+    expect(out.warnings).toEqual([])
+    expect(out.monthlyRollup[0].histGrossWaterVolume).toBeCloseTo(500)
+    expect(out.monthlyRollup[0].histNetWaterVolume).toBeCloseTo(1000)
+    expect(out.monthlyRollup[0].varWaterPerBBL).toBeCloseTo(1)
+    expect(out.wellData[0].monthlyData[0].histGrossOilVolume).toBeCloseTo(100)
+  })
+
+  it('reports unmatched volume rows', () => {
+    const out = attachHistoricalVolumes([], [{ wellName: 'Well A', wi: 1, monthlyData: [] }], [{
+      monthKey: '2024-01',
+      wellName: 'Missing Well',
+      applicableTag: '',
+      propertyName: '',
+      grossWaterVolume: 100,
+    }])
+
+    expect(out.warnings[0]).toContain('could not be matched')
   })
 })

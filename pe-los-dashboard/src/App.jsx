@@ -9,7 +9,7 @@ import {
 import { CHART_COLORS as C, TABS, INITIAL_ARIES_INPUTS } from './constants/losMapping.js'
 import { WBW_TYPES, WBW_GROUPS, SORT_OPTIONS } from './constants/wbwTypes.js'
 import { parseCSVText } from './ingest/parseCsv.js'
-import { buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs, attachPricingDifferentials } from './selectors/buildRollups.js'
+import { buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs, attachPricingDifferentials, attachHistoricalVolumes } from './selectors/buildRollups.js'
 import { exportHistorical, exportDataQualityReport } from './export/exportCsv.js'
 import { f$, fB, fP, fG2, fBoed, fMcfd, fMdol } from './utils/formatters.js'
 import {
@@ -41,13 +41,13 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   const my = {
     jpFixed:  pf(myCase.jpFixedPerWellMonth),  rpFixed:  pf(myCase.rpFixedPerWellMonth),
     jpWkover: pf(myCase.jpWorkoverPerWellMonth), rpWkover: pf(myCase.rpWorkoverPerWellMonth),
-    varOil:   pf(myCase.varOilPerBOE),           prodTax:  pf(myCase.prodTaxPct),
+    varOil:   pf(myCase.varOilPerBOE),           varWater: pf(myCase.varWaterPerBBL), prodTax:  pf(myCase.prodTaxPct),
     oilDiff:  pf(myCase.oilDiff),                gasDiff:  pf(myCase.gasDiff), nglDiffPct: pf(myCase.nglDiffPct),
   }
   const vdr = {
     jpFixed:  pf(vdrCase.jpFixedPerWellMonth),  rpFixed:  pf(vdrCase.rpFixedPerWellMonth),
     jpWkover: pf(vdrCase.jpWorkoverPerWellMonth), rpWkover: pf(vdrCase.rpWorkoverPerWellMonth),
-    varOil:   pf(vdrCase.varOilPerBOE),           prodTax:  pf(vdrCase.prodTaxPct),
+    varOil:   pf(vdrCase.varOilPerBOE),           varWater: pf(vdrCase.varWaterPerBBL), prodTax:  pf(vdrCase.prodTaxPct),
     oilDiff:  pf(vdrCase.oilDiff),                gasDiff:  pf(vdrCase.gasDiff), nglDiffPct: pf(vdrCase.nglDiffPct),
   }
 
@@ -85,6 +85,7 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
       'totalLOS', 'var_oil', 'var_water', 'gpt', 'midstream', 'prod_taxes', 'prod_tax_oil',
       'prod_tax_gas', 'prod_tax_ngl', 'ad_valorem_tax', 'severanceTaxes', 'capex',
       'costPerBOE', 'varOilPerBOE', 'gptPerBOE', 'fixedOnlyPerWell', 'workoverPerWell',
+      'varWaterPerBBL',
       'jpFixedOnlyPerWell', 'rpFixedOnlyPerWell', 'jpWorkoverPerWell', 'rpWorkoverPerWell',
       'capexPerWell', 'prodTaxPct', 'oilSevTaxPct', 'gasSevTaxPct', 'nglSevTaxPct', 'adValTaxPct',
       'realizedOil', 'realizedNGL', 'realizedGas',
@@ -427,6 +428,25 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
                 {rl('ltm6', ltm.avg6.varOilPerBOE, ovl, clr, fB, 'LTM 6mo', '2 2')}
                 {rl('vdr', vdr.varOil, ovl, clr, fB, 'VDR')}
                 {rl('my',  my.varOil,  ovl, clr, fB, 'My')}
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+  </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Water ($/BBL water)" ltmAvg={ltm.avg12.varWaterPerBBL} ltm6Avg={ltm.avg6.varWaterPerBBL} ltmFmt={fB} hasVdrMy>
+          {(yDomain, ovl, clr) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={CM}>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
+                <Bar dataKey="varWaterPerBBL" name="Water/BBL" fill={C.varWater}>
+                  <LabelList dataKey="varWaterPerBBL" content={topLabel(perUnitFmt)}/>
+                </Bar>
+                {rl('ltm', ltm.avg12.varWaterPerBBL, ovl, clr, fB, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.varWaterPerBBL, ovl, clr, fB, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.varWater, ovl, clr, fB, 'VDR')}
+                {rl('my',  my.varWater,  ovl, clr, fB, 'My')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -919,6 +939,7 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const my = {
     fixed:   parseFloat(myCase.jpFixedPerWellMonth) || null,
     varOil:  parseFloat(myCase.varOilPerBOE)         || null,
+    varWater: parseFloat(myCase.varWaterPerBBL)      || null,
     prodTax: parseFloat(myCase.prodTaxPct)            || null,
   }
   const base = { data, width, height, margin: WCM, maxBarSize: 80 }
@@ -1004,7 +1025,7 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const isGas = pk === 'realizedGas' || pk === 'actualGasPrice' || pk === 'gasDifferential'
   const isPerWellK = pk === 'fixedPerWell'
   const isPerUnit2 = [
-    'costPerBOE','varOilPerBOE','gptPerBOE','revenuePerBOE','marginPerBOE',
+    'costPerBOE','varOilPerBOE','varWaterPerBBL','gptPerBOE','revenuePerBOE','marginPerBOE',
     'realizedOil','realizedNGL','actualOilPrice','actualNGLPrice',
     'oilDifferential','midstreamPerBOE',
   ].includes(pk)
@@ -1018,6 +1039,7 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
               : isPerUnit2 ? n=>fmtMoney(n, 2)
               :         n=>fmtMoney(n, 1)
   const myRef = pk==='varOilPerBOE' && my.varOil  ? <ReferenceLine y={my.varOil}  stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
+              : pk==='varWaterPerBBL' && my.varWater ? <ReferenceLine y={my.varWater} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='fixedPerWell'  && my.fixed   ? <ReferenceLine y={my.fixed}   stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='prodTaxPct'   && my.prodTax  ? <ReferenceLine y={my.prodTax} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : null
@@ -1366,6 +1388,10 @@ function App() {
   const [pricingWarnings, setPricingWarnings] = useState([])
   const [pricingError, setPricingError] = useState(null)
   const [pricingFilename, setPricingFilename] = useState('')
+  const [volumeRows, setVolumeRows] = useState([])
+  const [volumeWarnings, setVolumeWarnings] = useState([])
+  const [volumeError, setVolumeError] = useState(null)
+  const [volumeFilename, setVolumeFilename] = useState('')
 
   const processText = useCallback((text, name) => {
     setLoading(true); setError(null); setWarnings([]); setDataIssues([])
@@ -1392,9 +1418,13 @@ function App() {
 
   const baseRollup   = useMemo(() => filteredRows ? buildMonthlyRollup(filteredRows) : [], [filteredRows])
   const baseWellData = useMemo(() => filteredRows ? buildWellData(filteredRows)      : [], [filteredRows])
-  const { monthlyRollup: rollup, wellData } = useMemo(
+  const pricedData = useMemo(
     () => attachPricingDifferentials(baseRollup, baseWellData, pricingRows),
     [baseRollup, baseWellData, pricingRows]
+  )
+  const { monthlyRollup: rollup, wellData, warnings: volumeMatchWarnings, histNetWaterByMonth } = useMemo(
+    () => attachHistoricalVolumes(pricedData.monthlyRollup, pricedData.wellData, volumeRows),
+    [pricedData, volumeRows]
   )
 
   const activeInputs = useMemo(
@@ -1568,6 +1598,16 @@ function App() {
                 setPricingError={setPricingError}
                 pricingFilename={pricingFilename}
                 setPricingFilename={setPricingFilename}
+                volumeRows={volumeRows}
+                setVolumeRows={setVolumeRows}
+                volumeWarnings={volumeWarnings}
+                setVolumeWarnings={setVolumeWarnings}
+                volumeError={volumeError}
+                setVolumeError={setVolumeError}
+                volumeFilename={volumeFilename}
+                setVolumeFilename={setVolumeFilename}
+                volumeMatchWarnings={volumeMatchWarnings}
+                histNetWaterByMonth={histNetWaterByMonth}
               />
             )}
           </>
