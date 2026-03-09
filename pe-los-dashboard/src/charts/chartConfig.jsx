@@ -17,7 +17,7 @@ export const fmtMoneyScaled = (n, scale = 1, decimals = 1) => {
 
 // ─── Shared chart props ───────────────────────────────────────────────────────
 
-export const CM = { top: 8, right: 20, left: 0, bottom: 4 }
+export const CM = { top: 30, right: 20, left: 0, bottom: 24 }
 
 export const GP = { stroke: '#9CA3AF', strokeDasharray: '0', vertical: false }
 
@@ -41,7 +41,7 @@ export const WAP = {
   axisLine: { stroke: '#D1D5DB' },
   tickLine: { stroke: '#D1D5DB' },
 }
-export const WCM = { top: 12, right: 6, left: 0, bottom: 0 }
+export const WCM = { top: 28, right: 6, left: 0, bottom: 18 }
 
 // ─── LabelList content factories ─────────────────────────────────────────────
 
@@ -56,13 +56,20 @@ export const segLabel = fmt => ({ x, y, width, height, value }) => {
   )
 }
 
-// Dark label above a bar (total label)
-export const topLabel = fmt => ({ x, y, width, value }) => {
+// Dark vertical label above positive bars and below negative bars (total label)
+export const topLabel = fmt => ({ x, y, width, height, value }) => {
   if (!value || !isFinite(value) || value === 0) return null
-  const yPos = value < 0 ? y + 14 : y - 5
+  const xPos = x + width / 2
+  const barTop = Math.min(y, y + height)
+  const barBottom = Math.max(y, y + height)
+  const gap = value < 0 ? 8 : 7
+  const yPos = value < 0 ? (barBottom + gap) : (barTop - gap)
+  const angle = -90
+  const anchor = value < 0 ? 'end' : 'start'
   return (
-    <text x={x + width / 2} y={yPos}
-      textAnchor="middle" fill="#374151" fontSize={9} fontWeight={700}>
+    <text x={xPos} y={yPos}
+      textAnchor={anchor} fill="#374151" fontSize={9} fontWeight={700}
+      transform={`rotate(${angle} ${xPos} ${yPos})`}>
       {fmt(value)}
     </text>
   )

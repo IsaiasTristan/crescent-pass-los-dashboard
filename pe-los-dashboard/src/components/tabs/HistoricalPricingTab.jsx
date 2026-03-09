@@ -1,21 +1,9 @@
 import React, { useMemo, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, LabelList,
 } from 'recharts'
 import { parseHistoricalPricingCSVText } from '../../ingest/parseHistoricalPricingCsv.js'
-
-const CHART_MARGINS = { top: 8, right: 20, left: 4, bottom: 8 }
-const AXIS_PROPS = {
-  tick: { fill: '#6B7280', fontSize: 10 },
-  tickLine: false,
-  axisLine: { stroke: '#E5E7EB' },
-}
-const GRID_PROPS = { stroke: '#E5E7EB', strokeDasharray: '2 2', vertical: false }
-const TOOLTIP_STYLE = {
-  contentStyle: { background: '#fff', border: '1px solid #E5E7EB', borderRadius: '6px', fontSize: '11px' },
-  itemStyle: { color: '#111827' },
-  labelStyle: { color: '#6B7280', fontSize: '11px' },
-}
+import { CM, GP, AP, TP, LP, topLabel } from '../../charts/chartConfig.jsx'
 
 function UploadBox({ onFile }) {
   const [drag, setDrag] = useState(false)
@@ -158,43 +146,55 @@ export function HistoricalPricingTab({
             <div className="bg-white border border-gray-200 rounded p-3 h-[320px]">
               <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Oil Pricing ($/BBL)</h3>
               <ResponsiveContainer width="100%" height="92%">
-                <BarChart data={chartRows} margin={CHART_MARGINS}>
-                  <CartesianGrid {...GRID_PROPS} />
-                  <XAxis dataKey="label" {...AXIS_PROPS} />
-                  <YAxis {...AXIS_PROPS} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={v => fmt(v)} />
-                  <Legend />
-                  <Bar dataKey="wti" name="WTI" fill="#1F3864" />
-                  <Bar dataKey="meh" name="MEH" fill="#2E74B5" />
+                <BarChart data={chartRows} margin={CM}>
+                  <CartesianGrid {...GP} />
+                  <XAxis dataKey="label" {...AP} />
+                  <YAxis {...AP} />
+                  <Tooltip {...TP} formatter={v => fmt(v)} />
+                  <Legend {...LP} />
+                  <Bar dataKey="wti" name="WTI" fill="#1F3864">
+                    <LabelList dataKey="wti" content={topLabel(v => fmt(v))} />
+                  </Bar>
+                  <Bar dataKey="meh" name="MEH" fill="#2E74B5">
+                    <LabelList dataKey="meh" content={topLabel(v => fmt(v))} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div className="bg-white border border-gray-200 rounded p-3 h-[320px]">
               <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Gas Pricing ($/MMBTU)</h3>
               <ResponsiveContainer width="100%" height="92%">
-                <BarChart data={chartRows} margin={CHART_MARGINS}>
-                  <CartesianGrid {...GRID_PROPS} />
-                  <XAxis dataKey="label" {...AXIS_PROPS} />
-                  <YAxis {...AXIS_PROPS} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={v => fmt(v, 3)} />
-                  <Legend />
-                  <Bar dataKey="hh" name="Henry Hub" fill="#C55A11" />
-                  <Bar dataKey="hsc" name="HSC" fill="#548235" />
+                <BarChart data={chartRows} margin={CM}>
+                  <CartesianGrid {...GP} />
+                  <XAxis dataKey="label" {...AP} />
+                  <YAxis {...AP} />
+                  <Tooltip {...TP} formatter={v => fmt(v, 3)} />
+                  <Legend {...LP} />
+                  <Bar dataKey="hh" name="Henry Hub" fill="#C55A11">
+                    <LabelList dataKey="hh" content={topLabel(v => fmt(v, 3))} />
+                  </Bar>
+                  <Bar dataKey="hsc" name="HSC" fill="#548235">
+                    <LabelList dataKey="hsc" content={topLabel(v => fmt(v, 3))} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div className="bg-white border border-gray-200 rounded p-3 h-[300px] xl:col-span-2">
               <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Basis Differentials</h3>
               <ResponsiveContainer width="100%" height="90%">
-                <BarChart data={chartRows} margin={CHART_MARGINS}>
-                  <CartesianGrid {...GRID_PROPS} />
-                  <XAxis dataKey="label" {...AXIS_PROPS} />
-                  <YAxis {...AXIS_PROPS} />
-                  <Tooltip {...TOOLTIP_STYLE} formatter={v => fmt(v, 3)} />
-                  <Legend />
+                <BarChart data={chartRows} margin={CM}>
+                  <CartesianGrid {...GP} />
+                  <XAxis dataKey="label" {...AP} />
+                  <YAxis {...AP} />
+                  <Tooltip {...TP} formatter={v => fmt(v, 3)} />
+                  <Legend {...LP} />
                   <ReferenceLine y={0} stroke="#6B7280" strokeDasharray="3 3" />
-                  <Bar dataKey="mehBasis" name="MEH Basis vs WTI" fill="#4B5563" />
-                  <Bar dataKey="hscBasis" name="HSC Basis vs Henry Hub" fill="#9CA3AF" />
+                  <Bar dataKey="mehBasis" name="MEH Basis vs WTI" fill="#4B5563">
+                    <LabelList dataKey="mehBasis" content={topLabel(v => fmt(v, 3))} />
+                  </Bar>
+                  <Bar dataKey="hscBasis" name="HSC Basis vs Henry Hub" fill="#9CA3AF">
+                    <LabelList dataKey="hscBasis" content={topLabel(v => fmt(v, 3))} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
