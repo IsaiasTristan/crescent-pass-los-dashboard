@@ -24,6 +24,8 @@ export function emptyM(date, mk, md) {
     gross_oil: 0, gross_gas: 0, gross_ngl: 0,
     fixed: 0, var_oil: 0, var_water: 0,
     gpt: 0, midstream: 0, workover: 0,
+    fixed_jp: 0, fixed_rp: 0,
+    workover_jp: 0, workover_rp: 0,
     prod_taxes: 0, capex: 0,
   }
 }
@@ -47,7 +49,9 @@ export function accum(m, row) {
 }
 
 // Derive all downstream metrics from a raw month accumulator + well count.
-export function metrics(m, wellCount) {
+export function metrics(m, wellCount, splitCounts = {}) {
+  const jpWellCount = splitCounts.jpWellCount || 0
+  const rpWellCount = splitCounts.rpWellCount || 0
   const days   = daysInMonth(m.date)
   const netBOE   = m.oil_vol  + m.ngl_vol  + sd(m.gas_vol,  GAS_BOE)
   const grossBOE = m.gross_oil + m.gross_ngl + sd(m.gross_gas, GAS_BOE)
@@ -79,6 +83,12 @@ export function metrics(m, wellCount) {
     gptPerBOE:        sd(m.gpt, netBOE),
     varWaterPerMonth: m.var_water,
     fixedPerWell:     sd(m.fixed + m.workover, wellCount),
+    fixedOnlyPerWell: sd(m.fixed, wellCount),
+    workoverPerWell:  sd(m.workover, wellCount),
+    jpFixedOnlyPerWell: sd(m.fixed_jp || 0, jpWellCount),
+    rpFixedOnlyPerWell: sd(m.fixed_rp || 0, rpWellCount),
+    jpWorkoverPerWell:  sd(m.workover_jp || 0, jpWellCount),
+    rpWorkoverPerWell:  sd(m.workover_rp || 0, rpWellCount),
     capexPerWell:     sd(m.capex, wellCount),
     prodTaxPct:       rev > 0 ? sd(m.prod_taxes, rev) * 100 : 0,
     costPerBOE:       sd(los,    netBOE),

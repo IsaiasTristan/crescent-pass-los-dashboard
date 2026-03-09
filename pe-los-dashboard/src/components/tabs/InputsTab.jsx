@@ -87,7 +87,7 @@ export function InputsTab({ ariesInputs, setAriesInputs, monthlyRollup }) {
             <input type="file" accept=".csv" className="hidden" onChange={e => onImportFile(e.target.files[0])}/>
             ↓ Import Inputs CSV
           </label>
-          <button onClick={() => exportInputs(ariesInputs)}
+          <button onClick={() => exportInputs(ariesInputs, hAvgs)}
             className="px-4 py-2 bg-white border border-gray-300 rounded text-sm text-gray-600 hover:text-gray-900 hover:border-gray-400 transition-colors cursor-pointer font-semibold">
             Export Inputs to CSV
           </button>

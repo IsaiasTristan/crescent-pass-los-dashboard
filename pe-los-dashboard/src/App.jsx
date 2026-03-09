@@ -28,8 +28,12 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   const data = useMemo(() => monthlyRollup.map(m => ({
     ...m,
     label: m.monthDisp,
-    fixedOnlyPerWell: m.wellCount > 0 ? m.fixed    / m.wellCount : 0,
-    workoverPerWell:  m.wellCount > 0 ? m.workover / m.wellCount : 0,
+    fixedOnlyPerWell: m.fixedOnlyPerWell,
+    workoverPerWell:  m.workoverPerWell,
+    jpFixedOnlyPerWell: m.jpFixedOnlyPerWell,
+    rpFixedOnlyPerWell: m.rpFixedOnlyPerWell,
+    jpWorkoverPerWell:  m.jpWorkoverPerWell,
+    rpWorkoverPerWell:  m.rpWorkoverPerWell,
   })), [monthlyRollup])
 
   const { myCase, vdrCase } = ariesInputs
@@ -83,6 +87,8 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
       gpt: b('gpt'), midstream: b('midstream'), prod_taxes: b('prod_taxes'), capex: b('capex'),
       costPerBOE: b('costPerBOE'), varOilPerBOE: b('varOilPerBOE'), gptPerBOE: b('gptPerBOE'),
       fixedOnlyPerWell: b('fixedOnlyPerWell'), workoverPerWell: b('workoverPerWell'),
+      jpFixedOnlyPerWell: b('jpFixedOnlyPerWell'), rpFixedOnlyPerWell: b('rpFixedOnlyPerWell'),
+      jpWorkoverPerWell: b('jpWorkoverPerWell'), rpWorkoverPerWell: b('rpWorkoverPerWell'),
       capexPerWell: b('capexPerWell'), prodTaxPct: b('prodTaxPct'),
       realizedOil: b('realizedOil'), realizedNGL: b('realizedNGL'), realizedGas: b('realizedGas'),
       actualOilPrice: b('actualOilPrice'), actualNGLPrice: b('actualNGLPrice'), actualGasPrice: b('actualGasPrice'),
@@ -189,7 +195,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={oilUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[oilUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="netOild" name="Net Oil" fill={C.oil}/>
+                <Bar dataKey="netOild" name="Net Oil" fill={C.oil}>
+                  <LabelList dataKey="netOild" content={topLabel(oilUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -202,7 +210,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={goilUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[goilUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="grossOild" name="Gross Oil" fill={C.oil}/>
+                <Bar dataKey="grossOild" name="Gross Oil" fill={C.oil}>
+                  <LabelList dataKey="grossOild" content={topLabel(goilUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -215,7 +225,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={nglUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[nglUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="netNGLd" name="Net NGL" fill={C.ngl}/>
+                <Bar dataKey="netNGLd" name="Net NGL" fill={C.ngl}>
+                  <LabelList dataKey="netNGLd" content={topLabel(nglUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -228,7 +240,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={gasUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[gasUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="netGasd" name="Net Gas" fill={C.gas}/>
+                <Bar dataKey="netGasd" name="Net Gas" fill={C.gas}>
+                  <LabelList dataKey="netGasd" content={topLabel(gasUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -241,7 +255,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={ggasUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[ggasUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="grossGasd" name="Gross Gas" fill={C.gas}/>
+                <Bar dataKey="grossGasd" name="Gross Gas" fill={C.gas}>
+                  <LabelList dataKey="grossGasd" content={topLabel(ggasUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -280,7 +296,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={voilUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[voilUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="var_oil" name="Var Oil" fill={C.varOil}/>
+                <Bar dataKey="var_oil" name="Var Oil" fill={C.varOil}>
+                  <LabelList dataKey="var_oil" content={topLabel(voilUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -293,7 +311,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={vwatUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[vwatUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="var_water" name="Water" fill={C.varWater}/>
+                <Bar dataKey="var_water" name="Water" fill={C.varWater}>
+                  <LabelList dataKey="var_water" content={topLabel(vwatUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -306,7 +326,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={gptUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[gptUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="gpt" name="GP&T" fill={C.gpt}/>
+                <Bar dataKey="gpt" name="GP&T" fill={C.gpt}>
+                  <LabelList dataKey="gpt" content={topLabel(gptUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -319,7 +341,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={midUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[midUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="midstream" name="Midstream" fill={C.midstream}/>
+                <Bar dataKey="midstream" name="Midstream" fill={C.midstream}>
+                  <LabelList dataKey="midstream" content={topLabel(midUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -332,7 +356,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={ptaxUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[ptaxUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes}/>
+                <Bar dataKey="prod_taxes" name="Prod Taxes" fill={C.prodTaxes}>
+                  <LabelList dataKey="prod_taxes" content={topLabel(ptaxUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -345,7 +371,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={capUnit.tickFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[capUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="capex" name="CAPEX" fill={C.capex}/>
+                <Bar dataKey="capex" name="CAPEX" fill={C.capex}>
+                  <LabelList dataKey="capex" content={topLabel(capUnit.segFmt)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -364,7 +392,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="costPerBOE" name="LOS/Boe" fill={C.cost}/>
+                <Bar dataKey="costPerBOE" name="LOS/Boe" fill={C.cost}>
+                  <LabelList dataKey="costPerBOE" content={topLabel(perUnitFmt)}/>
+                </Bar>
                 {rl('ltm', ltm.costPerBOE, ovl, clr, fB, 'LTM')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
@@ -378,7 +408,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="varOilPerBOE" name="Var Oil/Boe" fill={C.varOil}/>
+                <Bar dataKey="varOilPerBOE" name="Var Oil/Boe" fill={C.varOil}>
+                  <LabelList dataKey="varOilPerBOE" content={topLabel(perUnitFmt)}/>
+                </Bar>
                 {rl('ltm', ltm.varOilPerBOE, ovl, clr, fB, 'LTM')}
                 {rl('vdr', vdr.varOil, ovl, clr, fB, 'VDR')}
                 {rl('my',  my.varOil,  ovl, clr, fB, 'My')}
@@ -388,36 +420,72 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           )}
         </ChartCard>
 
-        <ChartCard title={`Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.fixedOnlyPerWell} ltmFmt={kpf} hasVdrMy>
+        <ChartCard title={`JP Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.jpFixedOnlyPerWell} ltmFmt={kpf} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="fixedOnlyPerWell" name="Fixed/Well" fill={C.fixed}/>
-                {rl('ltm', ltm.fixedOnlyPerWell, ovl, clr, kpf, 'LTM')}
+                <Bar dataKey="jpFixedOnlyPerWell" name="JP Fixed/Well" fill={C.fixed}>
+                  <LabelList dataKey="jpFixedOnlyPerWell" content={topLabel(kpf)}/>
+                </Bar>
+                {rl('ltm', ltm.jpFixedOnlyPerWell, ovl, clr, kpf, 'LTM')}
                 {rl('vdr', vdr.jpFixed, ovl, clr, kpf, 'VDR JP')}
-                {rl('vdr', vdr.rpFixed, ovl, clr, kpf, 'VDR RP', '2 5')}
                 {rl('my',  my.jpFixed,  ovl, clr, kpf, 'My JP')}
-                {rl('my',  my.rpFixed,  ovl, clr, kpf, 'My RP', '2 5')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title={`Workover (${perWellUnitLabel})`} ltmAvg={ltm.workoverPerWell} ltmFmt={kpf} hasVdrMy>
+        <ChartCard title={`RP Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.rpFixedOnlyPerWell} ltmFmt={kpf} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="workoverPerWell" name="Workover/Well" fill={C.workover}/>
-                {rl('ltm', ltm.workoverPerWell, ovl, clr, kpf, 'LTM')}
+                <Bar dataKey="rpFixedOnlyPerWell" name="RP Fixed/Well" fill={C.fixed}>
+                  <LabelList dataKey="rpFixedOnlyPerWell" content={topLabel(kpf)}/>
+                </Bar>
+                {rl('ltm', ltm.rpFixedOnlyPerWell, ovl, clr, kpf, 'LTM')}
+                {rl('vdr', vdr.rpFixed, ovl, clr, kpf, 'VDR RP')}
+                {rl('my',  my.rpFixed,  ovl, clr, kpf, 'My RP')}
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+  </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title={`JP Workover (${perWellUnitLabel})`} ltmAvg={ltm.jpWorkoverPerWell} ltmFmt={kpf} hasVdrMy>
+          {(yDomain, ovl, clr) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={CM}>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
+                <Bar dataKey="jpWorkoverPerWell" name="JP Workover/Well" fill={C.workover}>
+                  <LabelList dataKey="jpWorkoverPerWell" content={topLabel(kpf)}/>
+                </Bar>
+                {rl('ltm', ltm.jpWorkoverPerWell, ovl, clr, kpf, 'LTM')}
                 {rl('vdr', vdr.jpWkover, ovl, clr, kpf, 'VDR JP')}
-                {rl('vdr', vdr.rpWkover, ovl, clr, kpf, 'VDR RP', '2 5')}
                 {rl('my',  my.jpWkover,  ovl, clr, kpf, 'My JP')}
-                {rl('my',  my.rpWkover,  ovl, clr, kpf, 'My RP', '2 5')}
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+  </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title={`RP Workover (${perWellUnitLabel})`} ltmAvg={ltm.rpWorkoverPerWell} ltmFmt={kpf} hasVdrMy>
+          {(yDomain, ovl, clr) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={CM}>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
+                <Bar dataKey="rpWorkoverPerWell" name="RP Workover/Well" fill={C.workover}>
+                  <LabelList dataKey="rpWorkoverPerWell" content={topLabel(kpf)}/>
+                </Bar>
+                {rl('ltm', ltm.rpWorkoverPerWell, ovl, clr, kpf, 'LTM')}
+                {rl('vdr', vdr.rpWkover, ovl, clr, kpf, 'VDR RP')}
+                {rl('my',  my.rpWkover,  ovl, clr, kpf, 'My RP')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -430,7 +498,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={f$} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[f$(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="capexPerWell" name="CAPEX/Well" fill={C.capex}/>
+                <Bar dataKey="capexPerWell" name="CAPEX/Well" fill={C.capex}>
+                  <LabelList dataKey="capexPerWell" content={topLabel(f$)}/>
+                </Bar>
                 {rl('ltm', ltm.capexPerWell, ovl, clr, f$, 'LTM')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
@@ -444,7 +514,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={v=>`${v.toFixed(1)}%`} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fP(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="prodTaxPct" name="Prod Tax %" fill={C.prodTaxes}/>
+                <Bar dataKey="prodTaxPct" name="Prod Tax %" fill={C.prodTaxes}>
+                  <LabelList dataKey="prodTaxPct" content={topLabel(v => `${v.toFixed(1)}%`)}/>
+                </Bar>
                 {rl('ltm', ltm.prodTaxPct, ovl, clr, fP, 'LTM')}
                 {rl('vdr', vdr.prodTax, ovl, clr, fP, 'VDR')}
                 {rl('my',  my.prodTax,  ovl, clr, fP, 'My')}
@@ -466,7 +538,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="realizedOil" name="Realized Oil" fill={C.oil}/>
+                <Bar dataKey="realizedOil" name="Realized Oil" fill={C.oil}>
+                  <LabelList dataKey="realizedOil" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -479,7 +553,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="realizedNGL" name="Realized NGL" fill={C.ngl}/>
+                <Bar dataKey="realizedNGL" name="Realized NGL" fill={C.ngl}>
+                  <LabelList dataKey="realizedNGL" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -492,7 +568,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedGasFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fG2(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="realizedGas" name="Realized Gas" fill={C.gas}/>
+                <Bar dataKey="realizedGas" name="Realized Gas" fill={C.gas}>
+                  <LabelList dataKey="realizedGas" content={topLabel(fG2)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -505,7 +583,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="actualOilPrice" name="Actual Oil (MEH)" fill={C.index}/>
+                <Bar dataKey="actualOilPrice" name="Actual Oil (MEH)" fill={C.index}>
+                  <LabelList dataKey="actualOilPrice" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -518,7 +598,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="actualNGLPrice" name="Actual NGL (WTI)" fill={C.index}/>
+                <Bar dataKey="actualNGLPrice" name="Actual NGL (WTI)" fill={C.index}>
+                  <LabelList dataKey="actualNGLPrice" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -531,46 +613,54 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedGasFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fG2(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="actualGasPrice" name="Actual Gas (HSC)" fill={C.index}/>
+                <Bar dataKey="actualGasPrice" name="Actual Gas (HSC)" fill={C.index}>
+                  <LabelList dataKey="actualGasPrice" content={topLabel(fG2)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title="Oil Differential (MEH - Realized, $/Bbl)" ltmAvg={ltm.oilDifferential} ltmFmt={fB}>
+        <ChartCard title="Oil Differential (Realized - MEH, $/Bbl)" ltmAvg={ltm.oilDifferential} ltmFmt={fB}>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="oilDifferential" name="Oil Differential" fill={C.differential}/>
+                <Bar dataKey="oilDifferential" name="Oil Differential" fill={C.differential}>
+                  <LabelList dataKey="oilDifferential" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title="NGL Differential (WTI - Realized, $/Bbl)" ltmAvg={ltm.nglDifferential} ltmFmt={fB}>
+        <ChartCard title="NGL Differential (Realized - WTI, $/Bbl)" ltmAvg={ltm.nglDifferential} ltmFmt={fB}>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="nglDifferential" name="NGL Differential" fill={C.differential}/>
+                <Bar dataKey="nglDifferential" name="NGL Differential" fill={C.differential}>
+                  <LabelList dataKey="nglDifferential" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title="Gas Differential (HSC - Realized, $/Mcf)" ltmAvg={ltm.gasDifferential} ltmFmt={fG2}>
+        <ChartCard title="Gas Differential (Realized - HSC, $/Mcf)" ltmAvg={ltm.gasDifferential} ltmFmt={fG2}>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={realizedGasFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fG2(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="gasDifferential" name="Gas Differential" fill={C.differential}/>
+                <Bar dataKey="gasDifferential" name="Gas Differential" fill={C.differential}>
+                  <LabelList dataKey="gasDifferential" content={topLabel(fG2)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -583,7 +673,9 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="revenuePerBOE" name="Revenue/Boe" fill={C.revenue}/>
+                <Bar dataKey="revenuePerBOE" name="Revenue/Boe" fill={C.revenue}>
+                  <LabelList dataKey="revenuePerBOE" content={topLabel(fB)}/>
+                </Bar>
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -596,7 +688,10 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
               <BarChart data={data} margin={CM}>
                 <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitFmt} domain={yDomain}/>
                 <Tooltip {...TP} formatter={(v,n)=>[fB(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="marginPerBOE" name="Margin/Boe" fill={C.margin}/>                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+                <Bar dataKey="marginPerBOE" name="Margin/Boe" fill={C.margin}>
+                  <LabelList dataKey="marginPerBOE" content={topLabel(fB)}/>
+                </Bar>
+                <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
@@ -619,8 +714,8 @@ function ChartCard({ title, children, ltmAvg, ltmFmt, hasVdrMy }) {
 
   const hasCustomY = yMin !== '' || yMax !== ''
   const domain = [
-    yMin !== '' && !isNaN(+yMin) ? +yMin : dataMin => (dataMin < 0 ? Math.floor(dataMin * 1.18) : 0),
-    yMax !== '' && !isNaN(+yMax) ? +yMax : dataMax => Math.ceil(dataMax * 1.18),
+    yMin !== '' && !isNaN(+yMin) ? +yMin : dataMin => (dataMin < 0 ? Math.floor(dataMin * 1.55) : 0),
+    yMax !== '' && !isNaN(+yMax) ? +yMax : dataMax => Math.ceil(dataMax * 1.55),
   ]
 
   const toggle = (key, val) => setOverlays(p => ({ ...p, [key]: val }))
@@ -712,7 +807,9 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
     prodTax: parseFloat(myCase.prodTaxPct)            || null,
   }
   const base = { data, width, height, margin: WCM, maxBarSize: 80 }
-  const yD   = yDomain ? { domain: yDomain } : {}
+  const yD   = yDomain
+    ? { domain: yDomain }
+    : { domain: [dataMin => (dataMin < 0 ? Math.floor(dataMin * 1.45) : 0), dataMax => Math.ceil(dataMax * 1.45)] }
   const ct   = typeDef.chartType
 
   if (ct === 'boeStackD') {
@@ -811,7 +908,9 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   return <BarChart {...base}>
     <CartesianGrid {...GP}/><XAxis dataKey="monthDisp" {...WAP} interval="preserveStartEnd"/><YAxis {...WAP} {...yD} tickFormatter={axFmt}/>
     <Tooltip {...TP} formatter={v=>[typeDef.fmt(v)]}/>
-    <Bar dataKey={pk} fill={fill||C.oil}/>
+    <Bar dataKey={pk} fill={fill||C.oil}>
+      <LabelList dataKey={pk} content={topLabel(axFmt)}/>
+    </Bar>
     {myRef}
       <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
@@ -943,9 +1042,9 @@ function WellByWellTab({ wellData, ariesInputs, typeId, setTypeId, sortId, setSo
       })
     })
     if (min === 0 && max === 0) return null
-    if (min >= 0) return [0, max * 1.12]
-    if (max <= 0) return [min * 1.12, 0]
-    const pad = Math.max(Math.abs(min), Math.abs(max)) * 1.12
+    if (min >= 0) return [0, max * 1.45]
+    if (max <= 0) return [min * 1.45, 0]
+    const pad = Math.max(Math.abs(min), Math.abs(max)) * 1.45
     return [-pad, pad]
   }, [sharedAxis, filtered, typeDef.pk])
 

@@ -83,6 +83,22 @@ describe('buildMonthlyRollup', () => {
     const rollup = buildMonthlyRollup(rows)
     expect(rollup[0].totalLOS).toBeCloseTo(21000)
   })
+
+  it('splits fixed/workover per-well metrics by JP vs RP using lift-type-specific well counts', () => {
+    const rows = [
+      row({ wellName: 'JP 1', jpRp: 'JP', bucket: 'fixed', netAmount: 1000, netVolume: 0 }),
+      row({ wellName: 'JP 1', jpRp: 'JP', bucket: 'workover', netAmount: 300, netVolume: 0 }),
+      row({ wellName: 'JP 2', jpRp: 'JP', bucket: 'oil', netAmount: -10, netVolume: -1 }),
+      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'fixed', netAmount: 900, netVolume: 0 }),
+      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'workover', netAmount: 150, netVolume: 0 }),
+      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'oil', netAmount: -10, netVolume: -1 }),
+    ]
+    const rollup = buildMonthlyRollup(rows)
+    expect(rollup[0].jpFixedOnlyPerWell).toBeCloseTo(500)   // 1000 / 2 JP wells
+    expect(rollup[0].rpFixedOnlyPerWell).toBeCloseTo(900)   // 900 / 1 RP well
+    expect(rollup[0].jpWorkoverPerWell).toBeCloseTo(150)    // 300 / 2 JP wells
+    expect(rollup[0].rpWorkoverPerWell).toBeCloseTo(150)    // 150 / 1 RP well
+  })
 })
 
 // ─── buildWellData ────────────────────────────────────────────────────────────

@@ -6,17 +6,51 @@ import { emptyM, accum, metrics, daysInMonth, GAS_BOE } from '../domain/metrics.
 // ─── Monthly portfolio rollup ─────────────────────────────────────────────────
 
 export function buildMonthlyRollup(rows) {
-  const mm = {}, mw = {}
+  const mm = {}, mw = {}, mwJp = {}, mwRp = {}
+  const liftByWell = {}
+  const liftCountsByWell = {}
+  for (const r of rows) {
+    const wn = r?.wellName
+    if (!wn) continue
+    const lift = (r.jpRp || '').toUpperCase().trim()
+    if (!liftCountsByWell[wn]) liftCountsByWell[wn] = {}
+    liftCountsByWell[wn][lift] = (liftCountsByWell[wn][lift] || 0) + 1
+  }
+  for (const [wn, c] of Object.entries(liftCountsByWell)) {
+    liftByWell[wn] = Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]
+  }
+
   for (const r of rows) {
     if (!r.bucket || r.bucket === 'ignore') continue
     const k = r.monthKey
-    if (!mm[k]) { mm[k] = emptyM(r.date, r.monthKey, r.monthDisp); mw[k] = new Set() }
-    if (r.bucket !== 'capex') mw[k].add(r.wellName)
+    if (!mm[k]) {
+      mm[k] = emptyM(r.date, r.monthKey, r.monthDisp)
+      mw[k] = new Set()
+      mwJp[k] = new Set()
+      mwRp[k] = new Set()
+    }
+    if (r.bucket !== 'capex') {
+      mw[k].add(r.wellName)
+      const lift = liftByWell[r.wellName] || ''
+      if (lift === 'JP') mwJp[k].add(r.wellName)
+      else if (lift === 'RP') mwRp[k].add(r.wellName)
+    }
     accum(mm[k], r)
+    const lift = liftByWell[r.wellName] || ''
+    if (r.bucket === 'fixed') {
+      if (lift === 'JP') mm[k].fixed_jp += r.netAmount
+      else if (lift === 'RP') mm[k].fixed_rp += r.netAmount
+    } else if (r.bucket === 'workover') {
+      if (lift === 'JP') mm[k].workover_jp += r.netAmount
+      else if (lift === 'RP') mm[k].workover_rp += r.netAmount
+    }
   }
   return Object.values(mm)
     .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
-    .map(m => metrics(m, mw[m.monthKey].size))
+    .map(m => metrics(m, mw[m.monthKey].size, {
+      jpWellCount: mwJp[m.monthKey].size,
+      rpWellCount: mwRp[m.monthKey].size,
+    }))
 }
 
 // ─── Per-well aggregation ─────────────────────────────────────────────────────
@@ -159,9 +193,9 @@ export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
       actualOilPrice: actualOil,
       actualGasPrice: actualGas,
       actualNGLPrice: actualNGL,
-      oilDifferential: actualOil != null ? (actualOil - m.realizedOil) : null,
-      gasDifferential: actualGas != null ? (actualGas - m.realizedGas) : null,
-      nglDifferential: actualNGL != null ? (actualNGL - m.realizedNGL) : null,
+      oilDifferential: actualOil != null ? (m.realizedOil - actualOil) : null,
+      gasDifferential: actualGas != null ? (m.realizedGas - actualGas) : null,
+      nglDifferential: actualNGL != null ? (m.realizedNGL - actualNGL) : null,
     }
   }
 

@@ -99,6 +99,17 @@ export const ARIES_INPUT_FIELDS = [
 
 // Key map from export label → ARIES state key (used by parseAriesImport)
 export const ARIES_IMPORT_KEY_MAP = {
+  'JP Fixed':                        'jpFixedPerWellMonth',
+  'RP Fixed':                        'rpFixedPerWellMonth',
+  'JP Workover':                     'jpWorkoverPerWellMonth',
+  'RP Workover':                     'rpWorkoverPerWellMonth',
+  'Variable Oil Costs':              'varOilPerBOE',
+  'GP&T':                            'gptPerBOE',
+  'Variable Water':                  'varWaterPerBBL',
+  'Production Taxes':                'prodTaxPct',
+  'Oil Differential':                'oilDiff',
+  'Gas Differential':                'gasDiff',
+  'NGL Differential':                'nglDiffPct',
   'JP Fixed ($/well/month)':        'jpFixedPerWellMonth',
   'RP Fixed ($/well/month)':        'rpFixedPerWellMonth',
   'JP Workover ($/well/month)':     'jpWorkoverPerWellMonth',

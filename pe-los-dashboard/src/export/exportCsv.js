@@ -1,5 +1,5 @@
 import Papa from 'papaparse'
-import { EMPTY_CASE, ARIES_IMPORT_KEY_MAP } from '../constants/losMapping.js'
+import { EMPTY_CASE, ARIES_IMPORT_KEY_MAP, ARIES_INPUT_FIELDS } from '../constants/losMapping.js'
 
 // ─── CSV download helper ──────────────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ function dlCSV(filename, rows) {
 
 // ─── ARIES inputs export ──────────────────────────────────────────────────────
 
-export function exportInputs(ariesInputs) {
+export function buildAriesExportRows(ariesInputs, histAverages = {}) {
   const { vdrCase: v, myCase: m } = ariesInputs
   const diff = (a, b) => {
     const an = parseFloat(a), bn = parseFloat(b)
@@ -35,30 +35,25 @@ export function exportInputs(ariesInputs) {
     const an = parseFloat(a), bn = parseFloat(b)
     return (isNaN(an) || isNaN(bn) || an === 0) ? '' : `${(((bn - an) / Math.abs(an)) * 100).toFixed(1)}%`
   }
-  const row = (label, key) => ({
-    Input:                   label,
-    'VDR Case (Operated)':   v.op[key],
-    'VDR Case (Non-Op)':     v.obo[key],
-    'My Case (Operated)':    m.op[key],
-    'My Case (Non-Op)':      m.obo[key],
-    'Variance (Op)':         diff(v.op[key],  m.op[key]),
-    'Var% (Op)':             pct(v.op[key],   m.op[key]),
-    'Variance (OBO)':        diff(v.obo[key], m.obo[key]),
-    'Var% (OBO)':            pct(v.obo[key],  m.obo[key]),
+  const row = field => ({
+    Input:                   field.label,
+    'State Key':             field.key,
+    Unit:                    field.unit,
+    'VDR Case (Operated)':   v.op[field.key],
+    'VDR Case (Non-Op)':     v.obo[field.key],
+    'My Case (Operated)':    m.op[field.key],
+    'My Case (Non-Op)':      m.obo[field.key],
+    'Variance (Op)':         diff(v.op[field.key],  m.op[field.key]),
+    'Var% (Op)':             pct(v.op[field.key],   m.op[field.key]),
+    'Variance (OBO)':        diff(v.obo[field.key], m.obo[field.key]),
+    'Var% (OBO)':            pct(v.obo[field.key],  m.obo[field.key]),
+    'Hist Avg':              Number.isFinite(histAverages[field.key]) ? String(histAverages[field.key]) : '',
   })
-  dlCSV('aries_inputs_export.csv', [
-    row('JP Fixed ($/well/month)',       'jpFixedPerWellMonth'),
-    row('RP Fixed ($/well/month)',       'rpFixedPerWellMonth'),
-    row('JP Workover ($/well/month)',    'jpWorkoverPerWellMonth'),
-    row('RP Workover ($/well/month)',    'rpWorkoverPerWellMonth'),
-    row('Variable Oil ($/BOE)',          'varOilPerBOE'),
-    row('GP&T ($/BOE)',                  'gptPerBOE'),
-    row('Variable Water ($/BBL water)', 'varWaterPerBBL'),
-    row('Production Taxes (% revenue)', 'prodTaxPct'),
-    row('Oil Differential ($/BBL)',      'oilDiff'),
-    row('Gas Differential ($/MMBTU)',   'gasDiff'),
-    row('NGL Differential (% of WTI)',  'nglDiffPct'),
-  ])
+  return ARIES_INPUT_FIELDS.map(field => row(field))
+}
+
+export function exportInputs(ariesInputs, histAverages = {}) {
+  dlCSV('aries_inputs_export.csv', buildAriesExportRows(ariesInputs, histAverages))
 }
 
 // ─── Historical data export ───────────────────────────────────────────────────
@@ -145,17 +140,17 @@ export function parseAriesImport(text) {
 
   let matched = 0
   for (const row of result.data) {
-    const stateKey = ARIES_IMPORT_KEY_MAP[(row['Input'] || '').trim()]
+    const stateKey = (row['State Key'] || '').trim() || ARIES_IMPORT_KEY_MAP[(row['Input'] || '').trim()]
     if (!stateKey) continue
     matched++
     const vop  = (row['VDR Case (Operated)'] || '').trim()
     const vobo = (row['VDR Case (Non-Op)']   || '').trim()
     const mop  = (row['My Case (Operated)']  || '').trim()
     const mobo = (row['My Case (Non-Op)']    || '').trim()
-    if (vop)  out.vdrCase.op[stateKey]  = vop
-    if (vobo) out.vdrCase.obo[stateKey] = vobo
-    if (mop)  out.myCase.op[stateKey]   = mop
-    if (mobo) out.myCase.obo[stateKey]  = mobo
+    if (vop !== '')  out.vdrCase.op[stateKey]  = vop
+    if (vobo !== '') out.vdrCase.obo[stateKey] = vobo
+    if (mop !== '')  out.myCase.op[stateKey]   = mop
+    if (mobo !== '') out.myCase.obo[stateKey]  = mobo
   }
 
   if (matched === 0) {
