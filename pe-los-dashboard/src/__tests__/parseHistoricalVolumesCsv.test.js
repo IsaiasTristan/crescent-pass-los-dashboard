@@ -19,13 +19,14 @@ describe('parseHistoricalVolumesCSVText', () => {
 
   it('parses tab-delimited rows keyed by applicable tag', () => {
     const csv = [
-      'Date\tApplicable Tag\tGross Water Volume',
-      '1/31/24\t12345\t800',
+      'Date\tApplicable Tag\tOp Status\tGross Water Volume',
+      '1/31/24\t12345\tOPERATED\t800',
     ].join('\n')
 
     const out = parseHistoricalVolumesCSVText(csv)
     expect(out.rows).toHaveLength(1)
     expect(out.rows[0].applicableTag).toBe('12345')
+    expect(out.rows[0].opStatus).toBe('op')
     expect(out.rows[0].grossWaterVolume).toBe(800)
   })
 

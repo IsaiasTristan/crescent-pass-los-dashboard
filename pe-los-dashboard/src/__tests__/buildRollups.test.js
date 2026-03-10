@@ -9,6 +9,7 @@ function row(overrides) {
     bucket: 'oil',
     netAmount: -10000,
     netVolume: -200,
+    grossAmount: -11000,
     grossVolume: -220,
     monthKey: '2024-01',
     monthDisp: "Jan '24",
@@ -86,18 +87,46 @@ describe('buildMonthlyRollup', () => {
 
   it('splits fixed/workover per-well metrics by JP vs RP using lift-type-specific well counts', () => {
     const rows = [
-      row({ wellName: 'JP 1', jpRp: 'JP', bucket: 'fixed', netAmount: 1000, netVolume: 0 }),
-      row({ wellName: 'JP 1', jpRp: 'JP', bucket: 'workover', netAmount: 300, netVolume: 0 }),
+      row({ wellName: 'JP 1', jpRp: 'JP', bucket: 'fixed', netAmount: 1000, grossAmount: 1200, netVolume: 0 }),
+      row({ wellName: 'JP 1', jpRp: 'JP', bucket: 'workover', netAmount: 300, grossAmount: 450, netVolume: 0 }),
       row({ wellName: 'JP 2', jpRp: 'JP', bucket: 'oil', netAmount: -10, netVolume: -1 }),
-      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'fixed', netAmount: 900, netVolume: 0 }),
-      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'workover', netAmount: 150, netVolume: 0 }),
+      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'fixed', netAmount: 900, grossAmount: 1080, netVolume: 0 }),
+      row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'workover', netAmount: 150, grossAmount: 225, netVolume: 0 }),
       row({ wellName: 'RP 1', jpRp: 'RP', bucket: 'oil', netAmount: -10, netVolume: -1 }),
     ]
     const rollup = buildMonthlyRollup(rows)
-    expect(rollup[0].jpFixedOnlyPerWell).toBeCloseTo(500)   // 1000 / 2 JP wells
-    expect(rollup[0].rpFixedOnlyPerWell).toBeCloseTo(900)   // 900 / 1 RP well
-    expect(rollup[0].jpWorkoverPerWell).toBeCloseTo(150)    // 300 / 2 JP wells
-    expect(rollup[0].rpWorkoverPerWell).toBeCloseTo(150)    // 150 / 1 RP well
+    expect(rollup[0].jpFixedOnlyPerWell).toBeCloseTo(600)   // 1200 gross / 2 JP wells
+    expect(rollup[0].rpFixedOnlyPerWell).toBeCloseTo(1080)  // 1080 gross / 1 RP well
+    expect(rollup[0].jpWorkoverPerWell).toBeCloseTo(225)    // 450 gross / 2 JP wells
+    expect(rollup[0].rpWorkoverPerWell).toBeCloseTo(225)    // 225 gross / 1 RP well
+  })
+
+  it('uses month-specific JP/RP tags for the split counts and numerators', () => {
+    const rows = [
+      row({ wellName: 'Swing Well', monthKey: '2024-01', monthDisp: "Jan '24", date: new Date(2024, 0, 31), jpRp: 'JP', bucket: 'fixed', grossAmount: 1000, netAmount: 900, netVolume: 0 }),
+      row({ wellName: 'Swing Well', monthKey: '2024-01', monthDisp: "Jan '24", date: new Date(2024, 0, 31), jpRp: 'JP', bucket: 'workover', grossAmount: 400, netAmount: 350, netVolume: 0 }),
+      row({ wellName: 'Swing Well', monthKey: '2024-01', monthDisp: "Jan '24", date: new Date(2024, 0, 31), jpRp: 'JP', bucket: 'oil', netAmount: -10, netVolume: -1 }),
+      row({ wellName: 'Swing Well', monthKey: '2024-02', monthDisp: "Feb '24", date: new Date(2024, 1, 29), jpRp: 'RP', bucket: 'fixed', grossAmount: 1500, netAmount: 1350, netVolume: 0 }),
+      row({ wellName: 'Swing Well', monthKey: '2024-02', monthDisp: "Feb '24", date: new Date(2024, 1, 29), jpRp: 'RP', bucket: 'workover', grossAmount: 500, netAmount: 450, netVolume: 0 }),
+      row({ wellName: 'Swing Well', monthKey: '2024-02', monthDisp: "Feb '24", date: new Date(2024, 1, 29), jpRp: 'RP', bucket: 'oil', netAmount: -10, netVolume: -1 }),
+    ]
+
+    const rollup = buildMonthlyRollup(rows)
+    expect(rollup).toHaveLength(2)
+
+    expect(rollup[0].jpWellCount).toBe(1)
+    expect(rollup[0].rpWellCount).toBe(0)
+    expect(rollup[0].jpFixedOnlyPerWell).toBeCloseTo(1000)
+    expect(rollup[0].jpWorkoverPerWell).toBeCloseTo(400)
+    expect(rollup[0].rpFixedOnlyPerWell).toBe(0)
+    expect(rollup[0].rpWorkoverPerWell).toBe(0)
+
+    expect(rollup[1].jpWellCount).toBe(0)
+    expect(rollup[1].rpWellCount).toBe(1)
+    expect(rollup[1].jpFixedOnlyPerWell).toBe(0)
+    expect(rollup[1].jpWorkoverPerWell).toBe(0)
+    expect(rollup[1].rpFixedOnlyPerWell).toBeCloseTo(1500)
+    expect(rollup[1].rpWorkoverPerWell).toBeCloseTo(500)
   })
 
   it('breaks production taxes out into oil, gas, ngl severance and ad valorem', () => {
@@ -363,11 +392,11 @@ describe('attachPricingDifferentials', () => {
 })
 
 describe('attachHistoricalVolumes', () => {
-  it('matches historical gross water by applicable tag and derives net water unit cost', () => {
+  it('matches historical gross water by applicable tag and derives gross water unit cost', () => {
     const monthlyRollup = [{
       monthKey: '2024-01',
       monthDisp: "Jan '24",
-      var_water: 1000,
+      gross_var_water: 1000,
     }]
     const wellData = [{
       wellName: 'Well A',
@@ -377,7 +406,7 @@ describe('attachHistoricalVolumes', () => {
       monthlyData: [{
         monthKey: '2024-01',
         monthDisp: "Jan '24",
-        var_water: 1000,
+        gross_var_water: 1000,
       }],
     }]
     const volumeRows = [{
@@ -395,8 +424,7 @@ describe('attachHistoricalVolumes', () => {
     const out = attachHistoricalVolumes(monthlyRollup, wellData, volumeRows)
     expect(out.warnings).toEqual([])
     expect(out.monthlyRollup[0].histGrossWaterVolume).toBeCloseTo(500)
-    expect(out.monthlyRollup[0].histNetWaterVolume).toBeCloseTo(1000)
-    expect(out.monthlyRollup[0].varWaterPerBBL).toBeCloseTo(1)
+    expect(out.monthlyRollup[0].varWaterPerBBL).toBeCloseTo(2)
     expect(out.wellData[0].monthlyData[0].histGrossOilVolume).toBeCloseTo(100)
   })
 
@@ -410,5 +438,59 @@ describe('attachHistoricalVolumes', () => {
     }])
 
     expect(out.warnings[0]).toContain('could not be matched')
+  })
+
+  it('uses Op Status to set rollup water totals for the active op slice', () => {
+    const monthlyRollup = [{
+      monthKey: '2024-01',
+      monthDisp: "Jan '24",
+      gross_var_water: 1000,
+    }]
+    const wellData = [{
+      wellName: 'Well A',
+      propertyNum: 'TAG-001',
+      propertyName: 'Property A',
+      monthlyData: [{
+        monthKey: '2024-01',
+        monthDisp: "Jan '24",
+        gross_var_water: 1000,
+      }],
+    }]
+    const volumeRows = [
+      {
+        monthKey: '2024-01',
+        monthDisp: "Jan '24",
+        applicableTag: 'TAG-001',
+        wellName: '',
+        propertyName: '',
+        opStatus: 'op',
+        grossWaterVolume: 400,
+      },
+      {
+        monthKey: '2024-01',
+        monthDisp: "Jan '24",
+        applicableTag: 'NO_MATCH',
+        wellName: '',
+        propertyName: '',
+        opStatus: 'op',
+        grossWaterVolume: 600,
+      },
+      {
+        monthKey: '2024-01',
+        monthDisp: "Jan '24",
+        applicableTag: 'NO_MATCH_OBO',
+        wellName: '',
+        propertyName: '',
+        opStatus: 'obo',
+        grossWaterVolume: 200,
+      },
+    ]
+
+    const opOut = attachHistoricalVolumes(monthlyRollup, wellData, volumeRows, 'op')
+    const oboOut = attachHistoricalVolumes(monthlyRollup, wellData, volumeRows, 'obo')
+    expect(opOut.monthlyRollup[0].histGrossWaterVolume).toBeCloseTo(1000)
+    expect(opOut.monthlyRollup[0].varWaterPerBBL).toBeCloseTo(1)
+    expect(oboOut.monthlyRollup[0].histGrossWaterVolume).toBeCloseTo(200)
+    expect(oboOut.monthlyRollup[0].varWaterPerBBL).toBeCloseTo(5)
   })
 })

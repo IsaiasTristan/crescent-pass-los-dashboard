@@ -169,8 +169,11 @@ realizedOil   = oil_rev / oil_vol       // $/BBL
 realizedGas   = gas_rev / gas_vol       // $/MMBTU
 realizedNGL   = ngl_rev / ngl_vol       // $/BBL
 
-varOilPerBOE  = var_oil / (oil_vol + ngl_vol)
-fixedPerWell  = fixed / active_well_count_that_month
+varOilPerBOE  = gross_var_oil / gross_oil      // legacy state key; now stores oil unit cost on gross oil volume
+gptPerMcf     = gross_gpt / gross_gas          // gross GPT cost / gross gas volume
+varWaterPerBBL = gross_var_water / hist_gross_water_volume
+fixedPerWell  = gross_fixed / active_well_count_that_month
+workoverPerWell = gross_workover / active_well_count_that_month
 prodTaxPct    = prod_taxes / totalRevenue * 100
 costPerBOE    = totalLOS / netBOE
 
@@ -178,7 +181,7 @@ costPerBOE    = totalLOS / netBOE
 netOild = oil_vol / daysInMonth(date)
 ```
 
-**Note:** Water volumes are NOT in the LOS data. Variable water is shown as $/month, not $/BBL.
+**Note:** Water volumes are NOT in the LOS data. Historical gross-volume uploads provide the gross water denominator used for water unit cost.
 
 ---
 
@@ -274,7 +277,7 @@ Sensitive data files (raw LOS CSVs under `01. Analysis/` and `pe-los-dashboard/p
 // Nested by op/obo sub-case (added Session 9)
 {
   vdrCase: {
-    op:  { fixedPerWellMonth, varOilPerBOE, varWaterPerBBL, prodTaxPct, oilDiff, gasDiff, nglDiffPct },
+    op:  { jpFixedPerWellMonth, rpFixedPerWellMonth, jpWorkoverPerWellMonth, rpWorkoverPerWellMonth, varOilPerBOE, gptPerMcf, midstreamPerMcf, varWaterPerBBL, prodTaxPct, oilDiff, gasDiff, nglDiffPct },
     obo: { ...same keys... },
   },
   myCase: {
@@ -293,9 +296,11 @@ activeInputs = { vdrCase: inputs.vdrCase[slice], myCase: inputs.myCase[slice] }
 // Red   = My Case worse
 
 // Key definitions (all fields, same for op and obo):
-//   fixedPerWellMonth — $/well/month, flat (no escalation)
-//   varOilPerBOE      — $/BOE, applied to oil + NGL
-//   varWaterPerBBL    — $/BBL water (water vols not in LOS data)
+//   jp/rp Fixed       — gross fixed cost / rolling JP or RP well count for that month
+//   jp/rp Workover    — gross workover cost / rolling JP or RP well count for that month
+//   varOilPerBOE      — legacy state key; now gross oil cost / gross oil volume
+//   gptPerMcf         — gross GP&T cost / gross gas volume
+//   varWaterPerBBL    — gross water cost / uploaded gross water volume
 //   prodTaxPct        — % of gross revenue
 //   oilDiff           — $/BBL vs WTI (negative = discount)
 //   gasDiff           — $/MMBTU vs Henry Hub
@@ -309,7 +314,7 @@ activeInputs = { vdrCase: inputs.vdrCase[slice], myCase: inputs.myCase[slice] }
 - **No backend.** Pure client-side. All parsing and aggregation in the browser.
 - **useMemo on rollup + wellData** keyed off rawRows — no re-calc on every render.
 - **React.memo on WellCard** — 40 wells × re-renders would be slow otherwise.
-- **Water volumes not in LOS** — variable water shown as $/month, not $/BBL. ARIES input field for $/BBL water exists but has no historical comparison.
+- **Water volumes not in LOS** — variable water still exists as a dollar bucket in LOS, but historical water unit cost now uses uploaded gross water volumes.
 - **GPT row** in inputs is grayed-out placeholder. Will be loaded from a separate CSV (format TBD) joined by well + month.
 - **Gross vs. Net production:** Gross volumes from col 6, Net volumes from col 20. Both stored in parsed rows. Rollup uses both.
 - **Gas BOE conversion:** 6 MCF = 1 BOE (hardcoded constant `GAS_BOE = 6`).
@@ -365,7 +370,13 @@ DISCORD_CHANNEL_ID  = your-channel-id
 
 ## Session Log (reverse chronological)
 
-**2026-03-09 — Session 14**
+**2026-03-09 — Session 15**
+- **Global unit-cost formulas updated** to the latest user definitions: oil unit cost now uses `gross oil cost / gross oil volume`; GP&T uses `gross GPT cost / gross gas volume`; water uses `gross water cost / gross water volume`.
+- **Fixed vs. workover per-well logic separated**: fixed now uses `gross fixed / well count`, while workover uses `gross workover / well count`. JP and RP fixed/workover charts and ARIES historical averages use their own rolling JP/RP well counts.
+- **Historical gross-water logic simplified**: uploaded gross water now drives water unit-cost history directly. The prior `gross water / WI` net-water conversion no longer controls `varWaterPerBBL`.
+- **Status freshness check:** confirmed `node --version = v24.14.0`, `npm --version = 11.9.0`, and `npm test` passes (`100` tests).
+
+**2026-03-09 — Session 14** *(superseded in Session 15 for water-cost formula logic)*
 - Historical gross-volume CSV ingest added for the Vite app. Uploads can match LOS wells by normalized Well Name, Applicable Tag, or Property Name.
 - Gross water is converted to net water using `gross water / WI` per user instruction, and the resulting net water volume now drives historical `varWaterPerBBL = var_water / net_water_volume`.
 - Water unit-cost history now flows through ARIES historical averages, Asset Rollup unit-cost charts, Well by Well chart types, and historical export fields.

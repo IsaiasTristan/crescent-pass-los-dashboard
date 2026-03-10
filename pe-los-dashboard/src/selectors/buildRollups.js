@@ -7,22 +7,26 @@ import { emptyM, accum, metrics, daysInMonth, GAS_BOE } from '../domain/metrics.
 
 export function buildMonthlyRollup(rows) {
   const mm = {}, mw = {}, mwJp = {}, mwRp = {}
-  const liftByWell = {}
-  const liftCountsByWell = {}
+  const liftByWellMonth = {}
+  const liftCountsByWellMonth = {}
   for (const r of rows) {
     const wn = r?.wellName
-    if (!wn) continue
+    const mk = r?.monthKey
+    if (!wn || !mk) continue
     const lift = (r.jpRp || '').toUpperCase().trim()
-    if (!liftCountsByWell[wn]) liftCountsByWell[wn] = {}
-    liftCountsByWell[wn][lift] = (liftCountsByWell[wn][lift] || 0) + 1
+    const key = `${mk}::${wn}`
+    if (!liftCountsByWellMonth[key]) liftCountsByWellMonth[key] = {}
+    liftCountsByWellMonth[key][lift] = (liftCountsByWellMonth[key][lift] || 0) + 1
   }
-  for (const [wn, c] of Object.entries(liftCountsByWell)) {
-    liftByWell[wn] = Object.entries(c).sort((a, b) => b[1] - a[1])[0][0]
+  for (const [key, counts] of Object.entries(liftCountsByWellMonth)) {
+    liftByWellMonth[key] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
   }
 
   for (const r of rows) {
     if (!r.bucket || r.bucket === 'ignore') continue
     const k = r.monthKey
+    const wellMonthKey = `${k}::${r.wellName}`
+    const monthLift = liftByWellMonth[wellMonthKey] || ''
     if (!mm[k]) {
       mm[k] = emptyM(r.date, r.monthKey, r.monthDisp)
       mw[k] = new Set()
@@ -31,18 +35,16 @@ export function buildMonthlyRollup(rows) {
     }
     if (r.bucket !== 'capex') {
       mw[k].add(r.wellName)
-      const lift = liftByWell[r.wellName] || ''
-      if (lift === 'JP') mwJp[k].add(r.wellName)
-      else if (lift === 'RP') mwRp[k].add(r.wellName)
+      if (monthLift === 'JP') mwJp[k].add(r.wellName)
+      else if (monthLift === 'RP') mwRp[k].add(r.wellName)
     }
     accum(mm[k], r)
-    const lift = liftByWell[r.wellName] || ''
     if (r.bucket === 'fixed') {
-      if (lift === 'JP') mm[k].fixed_jp += r.netAmount
-      else if (lift === 'RP') mm[k].fixed_rp += r.netAmount
+      if (monthLift === 'JP') mm[k].gross_fixed_jp += r.grossAmount
+      else if (monthLift === 'RP') mm[k].gross_fixed_rp += r.grossAmount
     } else if (r.bucket === 'workover') {
-      if (lift === 'JP') mm[k].workover_jp += r.netAmount
-      else if (lift === 'RP') mm[k].workover_rp += r.netAmount
+      if (monthLift === 'JP') mm[k].gross_workover_jp += r.grossAmount
+      else if (monthLift === 'RP') mm[k].gross_workover_rp += r.grossAmount
     }
   }
   return Object.values(mm)
@@ -258,19 +260,29 @@ function initHistoricalVolumeFields(target) {
     histGrossGasVolume: target.histGrossGasVolume ?? null,
     histGrossNGLVolume: target.histGrossNGLVolume ?? null,
     histGrossWaterVolume: target.histGrossWaterVolume ?? null,
-    histNetWaterVolume: target.histNetWaterVolume ?? null,
     varWaterPerBBL: target.varWaterPerBBL ?? null,
   }
 }
 
-export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows) {
+function filterVolumeRowsByOpStatus(volumeRows, opFilter) {
+  if (!volumeRows || !volumeRows.length || opFilter === 'all') return volumeRows || []
+  return volumeRows.filter(row => {
+    if (!row?.opStatus) return true
+    if (opFilter === 'op') return row.opStatus === 'op'
+    if (opFilter === 'obo') return row.opStatus === 'obo'
+    return true
+  })
+}
+
+export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows, opFilter = 'all') {
   const rollupOut = (monthlyRollup || []).map(m => initHistoricalVolumeFields(m))
   const wellOut = (wellData || []).map(w => ({
     ...w,
     monthlyData: (w.monthlyData || []).map(m => initHistoricalVolumeFields(m)),
   }))
-  if (!volumeRows || !volumeRows.length || !wellOut.length) {
-    return { monthlyRollup: rollupOut, wellData: wellOut, warnings: [], histNetWaterByMonth: [] }
+  const scopedVolumeRows = filterVolumeRowsByOpStatus(volumeRows, opFilter)
+  if (!scopedVolumeRows.length || !wellOut.length) {
+    return { monthlyRollup: rollupOut, wellData: wellOut, warnings: [], histGrossWaterByMonth: [] }
   }
 
   const { exact, ambiguous } = buildIdentifierMap(wellOut)
@@ -278,18 +290,28 @@ export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows) {
   const monthRollupByKey = Object.fromEntries(rollupOut.map(m => [m.monthKey, m]))
   let unmatchedCount = 0
   let unmatchedMonthCount = 0
-  let zeroWiCount = 0
 
-  // Accumulates net water for ALL matched-well rows regardless of whether the month
-  // exists in the LOS data — enables a full historical net water chart.
-  const histNetWaterMap = {}
+  // Accumulates gross water for ALL matched-well rows regardless of whether the month
+  // exists in the LOS data — enables a full historical gross water chart.
+  const histGrossWaterMap = {}
 
   const addVolume = (obj, key, value) => {
     if (value == null || !isFinite(value)) return
     obj[key] = (obj[key] ?? 0) + value
   }
 
-  for (const row of volumeRows) {
+  for (const row of scopedVolumeRows) {
+    const rollupMonth = monthRollupByKey[row.monthKey]
+    const hasWater = row.grossWaterVolume != null && isFinite(row.grossWaterVolume)
+
+    if (hasWater) {
+      if (!histGrossWaterMap[row.monthKey]) {
+        histGrossWaterMap[row.monthKey] = { monthKey: row.monthKey, monthDisp: row.monthDisp, grossWater: 0 }
+      }
+      histGrossWaterMap[row.monthKey].grossWater += row.grossWaterVolume || 0
+      if (rollupMonth) addVolume(rollupMonth, 'histGrossWaterVolume', row.grossWaterVolume)
+    }
+
     const candidates = [row.applicableTag, row.wellName, row.propertyName]
       .map(normalizeIdentifier)
       .filter(Boolean)
@@ -307,47 +329,35 @@ export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows) {
     }
 
     const well = wellByName[matchedWellName]
-    const wi = Number(well.wi)
-    const hasWater = row.grossWaterVolume != null && isFinite(row.grossWaterVolume)
-    const netWaterVolume = hasWater && wi > 0 ? row.grossWaterVolume / wi : null
-    if (hasWater && !(wi > 0)) zeroWiCount++
-
-    // Always accumulate in the full historical net water series.
-    if (netWaterVolume != null) {
-      if (!histNetWaterMap[row.monthKey]) {
-        histNetWaterMap[row.monthKey] = { monthKey: row.monthKey, monthDisp: row.monthDisp, netWater: 0, grossWater: 0 }
-      }
-      histNetWaterMap[row.monthKey].netWater += netWaterVolume
-      histNetWaterMap[row.monthKey].grossWater += row.grossWaterVolume || 0
-    }
 
     // Attach to LOS months for varWaterPerBBL calculation.
     const wellMonth = (well?.monthlyData || []).find(m => m.monthKey === row.monthKey)
-    const rollupMonth = monthRollupByKey[row.monthKey]
     if (!wellMonth || !rollupMonth) {
       unmatchedMonthCount++
       continue
     }
 
-    for (const target of [wellMonth, rollupMonth]) {
+    addVolume(wellMonth, 'histGrossOilVolume', row.grossOilVolume)
+    addVolume(wellMonth, 'histGrossGasVolume', row.grossGasVolume)
+    addVolume(wellMonth, 'histGrossNGLVolume', row.grossNGLVolume)
+    addVolume(wellMonth, 'histGrossWaterVolume', row.grossWaterVolume)
+    for (const target of [rollupMonth]) {
       addVolume(target, 'histGrossOilVolume', row.grossOilVolume)
       addVolume(target, 'histGrossGasVolume', row.grossGasVolume)
       addVolume(target, 'histGrossNGLVolume', row.grossNGLVolume)
-      addVolume(target, 'histGrossWaterVolume', row.grossWaterVolume)
-      addVolume(target, 'histNetWaterVolume', netWaterVolume)
     }
   }
 
   for (const well of wellOut) {
     for (const month of well.monthlyData) {
-      month.varWaterPerBBL = month.histNetWaterVolume ? month.var_water / month.histNetWaterVolume : null
+      month.varWaterPerBBL = month.histGrossWaterVolume ? month.gross_var_water / month.histGrossWaterVolume : null
     }
   }
   for (const month of rollupOut) {
-    month.varWaterPerBBL = month.histNetWaterVolume ? month.var_water / month.histNetWaterVolume : null
+    month.varWaterPerBBL = month.histGrossWaterVolume ? month.gross_var_water / month.histGrossWaterVolume : null
   }
 
-  const histNetWaterByMonth = Object.values(histNetWaterMap)
+  const histGrossWaterByMonth = Object.values(histGrossWaterMap)
     .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
 
   const warnings = []
@@ -357,12 +367,9 @@ export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows) {
   if (unmatchedMonthCount > 0) {
     warnings.push(
       `${unmatchedMonthCount} historical gross-volume row(s) matched a well but fall outside the LOS date range — ` +
-      `these are included in the historical net water chart but cannot be used for cost-per-BBL (expected for multi-year production histories).`
+      `these are included in the historical gross-water chart but cannot be used for cost-per-BBL (expected for multi-year production histories).`
     )
   }
-  if (zeroWiCount > 0) {
-    warnings.push(`${zeroWiCount} historical gross-water row(s) had a zero or missing WI, so net water volume could not be calculated.`)
-  }
 
-  return { monthlyRollup: rollupOut, wellData: wellOut, warnings, histNetWaterByMonth }
+  return { monthlyRollup: rollupOut, wellData: wellOut, warnings, histGrossWaterByMonth }
 }

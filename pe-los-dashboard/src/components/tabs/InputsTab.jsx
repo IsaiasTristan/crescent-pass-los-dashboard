@@ -194,11 +194,12 @@ export function InputsTab({ ariesInputs, setAriesInputs, monthlyRollup }) {
         <div className="bg-white border border-gray-200 rounded p-4">
           <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Assumption Notes</h3>
           <ul className="space-y-1.5 text-xs text-gray-500">
-            <li>Fixed costs: flat $/well/month, no escalation</li>
-            <li>Variable Oil: applied to oil + NGL production (BOE)</li>
-            <li>GP&amp;T: benchmarked on a $/Mcf basis because the cost is gas-dependent</li>
-            <li>Midstream Revenue: benchmarked on a $/Net Mcf basis</li>
-            <li>Variable Water: historical $/BBL uses uploaded gross water volumes converted to net with gross water / WI</li>
+            <li>JP and RP fixed costs use their own rolling well counts for the monthly denominator</li>
+            <li>JP and RP workover costs use gross workover cost divided by their own rolling well counts</li>
+            <li>Oil unit cost uses gross oil cost divided by gross oil volume</li>
+            <li>GP&amp;T uses gross GP&amp;T cost divided by gross gas volume</li>
+            <li>Midstream revenue uses gross midstream cost divided by gross gas volume</li>
+            <li>Variable Water uses gross water cost divided by uploaded gross water volume</li>
             <li>Production Taxes: % of gross revenue</li>
             <li>Oil differential: $/BBL vs. WTI (negative = discount)</li>
             <li>Gas differential: $/MMBTU vs. Henry Hub</li>

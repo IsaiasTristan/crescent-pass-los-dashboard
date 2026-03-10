@@ -64,6 +64,14 @@ function parseNum(raw) {
   return isNaN(n) ? null : n
 }
 
+function normalizeOpStatus(raw) {
+  const text = (raw || '').toString().trim().toUpperCase()
+  if (!text) return ''
+  if (text === 'OP' || text === 'OPERATED') return 'op'
+  if (text === 'OBO' || text === 'NON-OPERATED' || text === 'NON-OP' || text.startsWith('NON')) return 'obo'
+  return ''
+}
+
 function tryParseWithDelimiter(text, delimiter) {
   const parsed = Papa.parse(text, { delimiter, header: false, skipEmptyLines: true })
   const rows = parsed.data || []
@@ -78,6 +86,7 @@ function tryParseWithDelimiter(text, delimiter) {
     'pt prop num', 'pt prop #', 'pt property num', 'pt property #',
   ])
   const propertyNameIdx = findIndex(headerIndex, ['property name', 'property', 'lease'])
+  const opStatusIdx = findIndex(headerIndex, ['op status', 'opstatus', 'op/obo', 'status'])
   const grossOilIdx = findIndex(headerIndex, ['gross oil', 'gross oil volume', 'oil gross', 'oil volume'])
   const grossGasIdx = findIndex(headerIndex, ['gross gas', 'gross gas volume', 'gas gross', 'gas volume'])
   const grossNglIdx = findIndex(headerIndex, ['gross ngl', 'gross ngl volume', 'ngl gross', 'ngl volume'])
@@ -94,6 +103,7 @@ function tryParseWithDelimiter(text, delimiter) {
       wellNameIdx,
       applicableTagIdx,
       propertyNameIdx,
+      opStatusIdx,
       grossOilIdx,
       grossGasIdx,
       grossNglIdx,
@@ -137,6 +147,7 @@ export function parseHistoricalVolumesCSVText(text) {
     const wellName = indices.wellNameIdx >= 0 ? (row[indices.wellNameIdx] || '').toString().trim() : ''
     const applicableTag = indices.applicableTagIdx >= 0 ? (row[indices.applicableTagIdx] || '').toString().trim() : ''
     const propertyName = indices.propertyNameIdx >= 0 ? (row[indices.propertyNameIdx] || '').toString().trim() : ''
+    const opStatus = indices.opStatusIdx >= 0 ? normalizeOpStatus(row[indices.opStatusIdx]) : ''
     if (!wellName && !applicableTag && !propertyName) {
       skippedNoIdentifier++
       continue
@@ -157,6 +168,7 @@ export function parseHistoricalVolumesCSVText(text) {
       wellName,
       applicableTag,
       propertyName,
+      opStatus,
       grossOilVolume,
       grossGasVolume,
       grossNGLVolume,

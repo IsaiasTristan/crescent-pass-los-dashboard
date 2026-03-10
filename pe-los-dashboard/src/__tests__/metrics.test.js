@@ -36,7 +36,8 @@ describe('daysInMonth', () => {
 // ─── accum + metrics ──────────────────────────────────────────────────────────
 
 function makeRow(bucket, netAmount, netVolume, grossVolume = 0, extra = {}) {
-  return { bucket, netAmount, netVolume, grossVolume, ...extra }
+  const grossAmount = extra.grossAmount ?? netAmount
+  return { bucket, netAmount, netVolume, grossAmount, grossVolume, ...extra }
 }
 
 describe('accum and metrics', () => {
@@ -115,13 +116,38 @@ describe('accum and metrics', () => {
     expect(r.netOild).toBeCloseTo(10)
   })
 
-  it('computes fixedPerWell using fixed + workover', () => {
+  it('computes oil unit cost using gross oil cost over gross oil volume', () => {
     const m = emptyM(date, '2024-01', "Jan '24")
-    accum(m, makeRow('fixed',    60000, 0))
-    accum(m, makeRow('workover', 30000, 0))
+    accum(m, makeRow('oil', -100000, -1000, -1200))
+    accum(m, makeRow('variable_oil', 20000, 0, 0, { grossAmount: 24000 }))
+    const r = metrics(m, 3)
+    expect(r.varOilPerBOE).toBeCloseTo(20) // 24000 / 1200 gross BBL
+  })
+
+  it('computes fixedPerWell using fixed cost only', () => {
+    const m = emptyM(date, '2024-01', "Jan '24")
+    accum(m, makeRow('fixed',    60000, 0, 0, { grossAmount: 75000 }))
+    accum(m, makeRow('workover', 30000, 0, 0, { grossAmount: 45000 }))
     const r = metrics(m, 3)
     expect(r.totalFixed).toBeCloseTo(90000)
-    expect(r.fixedPerWell).toBeCloseTo(30000)  // 90000 / 3 wells
+    expect(r.fixedPerWell).toBeCloseTo(25000)  // 75000 gross / 3 wells
+    expect(r.workoverPerWell).toBeCloseTo(15000) // 45000 gross / 3 wells
+  })
+
+  it('computes GP&T using gross cost over gross gas volume', () => {
+    const m = emptyM(date, '2024-01', "Jan '24")
+    accum(m, makeRow('gpt', 1200, 0, 0, { grossAmount: 1800 }))
+    accum(m, makeRow('gas', -50000, -600, -700))
+    const r = metrics(m, 2)
+    expect(r.gptPerMcf).toBeCloseTo(1800 / 700) // gross GPT / gross gas Mcf
+  })
+
+  it('computes midstream using gross revenue over gross gas volume', () => {
+    const m = emptyM(date, '2024-01', "Jan '24")
+    accum(m, makeRow('midstream', -900, 0, 0))
+    accum(m, makeRow('gas', -50000, -600, -750))
+    const r = metrics(m, 2)
+    expect(r.midstreamPerMcf).toBeCloseTo(-900 / 750)
   })
 
   it('breaks out production taxes by commodity and ad valorem', () => {

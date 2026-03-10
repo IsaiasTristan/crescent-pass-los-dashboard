@@ -65,7 +65,7 @@ export function HistoricalPricingTab({
   volumeFilename = '',
   setVolumeFilename,
   volumeMatchWarnings = [],
-  histNetWaterByMonth = [],
+  histGrossWaterByMonth = [],
 }) {
   const [loading, setLoading] = useState(false)
   const [volumeLoading, setVolumeLoading] = useState(false)
@@ -131,29 +131,26 @@ export function HistoricalPricingTab({
     [pricingRows]
   )
 
-  // Use matched-and-WI-converted net water series when available; fall back to raw
-  // gross water from the parsed rows (before LOS matching has run).
+  // Use matched gross-water history when available; fall back to raw gross water
+  // from the parsed rows before LOS matching has run.
   const waterChartRows = useMemo(() => {
-    if (histNetWaterByMonth.length > 0) {
-      return histNetWaterByMonth.map(r => ({
+    if (histGrossWaterByMonth.length > 0) {
+      return histGrossWaterByMonth.map(r => ({
         label: r.monthDisp,
-        netWater: r.netWater,
         grossWater: r.grossWater,
       }))
     }
-    // Fallback: aggregate gross water directly from parsed volume rows (no WI applied).
+    // Fallback: aggregate gross water directly from parsed volume rows.
     const months = {}
     volumeRows.forEach(row => {
       const key = row.monthKey
-      if (!months[key]) months[key] = { label: row.monthDisp, grossWater: 0, netWater: null }
+      if (!months[key]) months[key] = { label: row.monthDisp, grossWater: 0 }
       months[key].grossWater += row.grossWaterVolume || 0
     })
     return Object.entries(months)
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([, value]) => value)
-  }, [histNetWaterByMonth, volumeRows])
-
-  const hasNetWater = histNetWaterByMonth.length > 0
+  }, [histGrossWaterByMonth, volumeRows])
 
   return (
     <div className="space-y-5">
@@ -161,7 +158,7 @@ export function HistoricalPricingTab({
         <div>
           <h2 className="text-lg font-bold text-gray-900">Historical Inputs</h2>
           <p className="text-xs text-gray-500 mt-1">
-            Upload monthly pricing plus gross volumes. Gross water is converted to net water with gross water / WI and feeds the water unit-cost history.
+            Upload monthly pricing plus gross volumes. Gross water history feeds the water unit-cost calculation directly.
           </p>
         </div>
         <div className="text-xs text-gray-500">
@@ -320,15 +317,10 @@ export function HistoricalPricingTab({
               <div className="text-base font-bold text-gray-900 mt-1">{volumeRows.length.toLocaleString()}</div>
             </div>
             <div className="bg-white border border-gray-200 rounded p-3">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
-                {hasNetWater ? 'Latest Net Water' : 'Latest Gross Water'}
-              </div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Latest Gross Water</div>
               <div className="text-base font-bold text-gray-900 mt-1">
                 {waterChartRows.length
-                  ? Number((hasNetWater
-                      ? waterChartRows[waterChartRows.length - 1].netWater
-                      : waterChartRows[waterChartRows.length - 1].grossWater) || 0
-                    ).toLocaleString('en-US', { maximumFractionDigits: 1 })
+                  ? Number((waterChartRows[waterChartRows.length - 1].grossWater) || 0).toLocaleString('en-US', { maximumFractionDigits: 1 })
                   : '--'}
               </div>
             </div>
@@ -344,7 +336,7 @@ export function HistoricalPricingTab({
 
           <div className="bg-white border border-gray-200 rounded p-3 h-[320px]">
             <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
-              {hasNetWater ? 'Historical Net Water Volume (Gross ÷ WI)' : 'Historical Gross Water Volume'}
+              Historical Gross Water Volume
             </h3>
             <ResponsiveContainer width="100%" height="92%">
               <BarChart data={waterChartRows} margin={CM}>
@@ -356,15 +348,9 @@ export function HistoricalPricingTab({
                   formatter={(v, name) => [Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 1 }), name]}
                 />
                 <Legend {...LP} />
-                {hasNetWater ? (
-                  <Bar dataKey="netWater" name="Net Water (BBL)" fill="#2E74B5">
-                    <LabelList dataKey="netWater" content={topLabel(v => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }))} />
-                  </Bar>
-                ) : (
-                  <Bar dataKey="grossWater" name="Gross Water" fill="#808080">
-                    <LabelList dataKey="grossWater" content={topLabel(v => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }))} />
-                  </Bar>
-                )}
+                <Bar dataKey="grossWater" name="Gross Water (BBL)" fill="#808080">
+                  <LabelList dataKey="grossWater" content={topLabel(v => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }))} />
+                </Bar>
                 <ReferenceLine y={0} stroke="#6B7280" strokeDasharray="3 3" />
               </BarChart>
             </ResponsiveContainer>

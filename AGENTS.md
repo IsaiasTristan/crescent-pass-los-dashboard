@@ -64,7 +64,7 @@ _(None at this time.)_
 ## Data and calculations (summary)
 
 - **Buckets:** oil, gas, ngl, fixed, variable_oil, variable_water, gpt, workover, prod_taxes, capex (excluded), null (skipped). Cost Category → bucket in `COST_CAT_BUCKETS`; fallback `LOS_BUCKETS` by LOS Category.
-- **Metrics:** `totalFixed = fixed + workover`; `totalLOS = var_oil + var_water + totalFixed + gpt + prod_taxes`; `opMargin = totalRevenue - totalLOS`; `assetFCF = opMargin - capex`; `fixedPerWell = (fixed + workover) / wellCount`; `netBOE = oil_vol + ngl_vol + gas_vol/6`.
+- **Metrics:** `totalFixed = fixed + workover`; `totalLOS = var_oil + var_water + totalFixed + gpt + prod_taxes`; `opMargin = totalRevenue - totalLOS`; `assetFCF = opMargin - capex`; `fixedPerWell = gross_fixed / wellCount`; `workoverPerWell = gross_workover / wellCount`; `varOilPerBOE` (legacy key) = `gross_var_oil / gross_oil`; `gptPerMcf = gross_gpt / gross_gas_volume`; `varWaterPerBBL = gross_var_water / gross_water_volume`; `netBOE = oil_vol + ngl_vol + gas_vol/6`.
 - **Design:** Light mode, Evercore IB palette (e.g. Oil #1F3864, Gas #C55A11, NGL #548235). Inter font. Chart reference lines: My Case orange dashed, VDR gray dotted.
 
 ---
@@ -101,6 +101,6 @@ Agents implement features and fixes per `ProjectBrief.md`, keep this file and `P
 
 ## Sync instruction
 
-Current implementation note: the Vite app now supports a separate historical gross-volume CSV upload. Matching is done by normalized Well Name / Applicable Tag / Property Name, and historical water unit cost uses `gross water / WI` to derive net water volume before calculating `varWaterPerBBL`.
+Current implementation note: the Vite app supports a separate historical gross-volume CSV upload. Matching is done by normalized Well Name / Applicable Tag / Property Name. Current global unit-cost formulas are: oil = gross oil cost / gross oil volume; workover = gross workover cost / monthly well count; fixed = gross fixed cost / monthly well count; JP and RP fixed/workover use their own rolling JP/RP well counts; water = gross water cost / gross water volume; GP&T = gross GPT cost / gross gas volume. Status freshness check (2026-03-09): `node --version` = `v24.14.0`, `npm --version` = `11.9.0`, `npm test` passing.
 
 When you change Cursor rules (e.g. in `.cursor/rules/`) or update `ProjectBrief.md`, update this file so terminal and other agents keep the same guidance. Do not add or remove rules here; mirror only.

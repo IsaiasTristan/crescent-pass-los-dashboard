@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
+import { ChartDataTable } from './ChartDataTable.jsx'
 
-export function ChartCard({ title, children, ltmAvg, ltm6Avg, ltmFmt, hasVdrMy }) {
+export function ChartCard({ title, children, ltmAvg, ltm6Avg, ltmFmt, hasVdrMy, detailTable }) {
   const [yMin, setYMin] = useState('')
   const [yMax, setYMax] = useState('')
   const [showYCtrl, setShowYCtrl] = useState(false)
   const [showOverlayMenu, setShowOverlayMenu] = useState(false)
+  const [showDataTable, setShowDataTable] = useState(false)
   const [overlays, setOverlays] = useState({ vdr: true, my: true, ltm: true, ltm6: true })
   const [colors, setColors] = useState({ vdr: '#000000', my: '#C55A11', ltm: '#9CA3AF', ltm6: '#6B7280' })
 
@@ -50,21 +52,35 @@ export function ChartCard({ title, children, ltmAvg, ltm6Avg, ltmFmt, hasVdrMy }
         <h3 className="text-sm font-bold text-gray-900 leading-tight">{title}</h3>
         <div className="flex items-center gap-1 flex-shrink-0">
           <CtrlBtn
-            label="Lines ▾"
+            label="Lines"
             active={showOverlayMenu}
             hilite={false}
             onClick={() => {
               setShowOverlayMenu(v => !v)
               setShowYCtrl(false)
+              setShowDataTable(false)
             }}
           />
+          {detailTable?.rows?.length > 0 && (
+            <CtrlBtn
+              label="Data"
+              active={showDataTable}
+              hilite={showDataTable}
+              onClick={() => {
+                setShowDataTable(v => !v)
+                setShowYCtrl(false)
+                setShowOverlayMenu(false)
+              }}
+            />
+          )}
           <CtrlBtn
-            label="Y ⚙"
+            label="Y Axis"
             active={showYCtrl}
             hilite={hasCustomY}
             onClick={() => {
               setShowYCtrl(v => !v)
               setShowOverlayMenu(false)
+              setShowDataTable(false)
             }}
           />
         </div>
@@ -158,6 +174,8 @@ export function ChartCard({ title, children, ltmAvg, ltm6Avg, ltmFmt, hasVdrMy }
           )}
         </div>
       )}
+
+      {showDataTable && <ChartDataTable table={detailTable} />}
     </div>
   )
 }
