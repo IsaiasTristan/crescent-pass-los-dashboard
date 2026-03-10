@@ -1,3 +1,7 @@
 diff input line not showing up on chart
 input gross hist volume, net will be gross vol*WI
 sev tax broken out by commodity, ad val tax
+migrate inputs chatys pmon a a seperate input tab 
+Ability to save doenw chart settings n stuff.., includinf g colors
+table under charts
+Need to be able to do GPT analysis seperateley

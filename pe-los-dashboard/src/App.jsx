@@ -16,7 +16,8 @@ import {
   CM, GP, AP, TP, LP, WAP, WCM,
   segLabel, topLabel, rl, smartUnit, buildLTM, safeAvg, fmtMoney, fmtMoneyScaled,
 } from './charts/chartConfig.jsx'
-import { InputsTab, LOSTableTab, HistoricalPricingTab } from './components/tabs/index.js'
+import { ChartCard } from './components/charts/ChartCard.jsx'
+import { InputsTab, InputChartsTab, LOSTableTab, HistoricalPricingTab } from './components/tabs/index.js'
 
 // ─── ROLLUP TAB ───────────────────────────────────────────────────────────────
 
@@ -41,13 +42,15 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   const my = {
     jpFixed:  pf(myCase.jpFixedPerWellMonth),  rpFixed:  pf(myCase.rpFixedPerWellMonth),
     jpWkover: pf(myCase.jpWorkoverPerWellMonth), rpWkover: pf(myCase.rpWorkoverPerWellMonth),
-    varOil:   pf(myCase.varOilPerBOE),           varWater: pf(myCase.varWaterPerBBL), prodTax:  pf(myCase.prodTaxPct),
+    varOil:   pf(myCase.varOilPerBOE),           gpt: pf(myCase.gptPerMcf), midstream: pf(myCase.midstreamPerMcf),
+    varWater: pf(myCase.varWaterPerBBL),         prodTax:  pf(myCase.prodTaxPct),
     oilDiff:  pf(myCase.oilDiff),                gasDiff:  pf(myCase.gasDiff), nglDiffPct: pf(myCase.nglDiffPct),
   }
   const vdr = {
     jpFixed:  pf(vdrCase.jpFixedPerWellMonth),  rpFixed:  pf(vdrCase.rpFixedPerWellMonth),
     jpWkover: pf(vdrCase.jpWorkoverPerWellMonth), rpWkover: pf(vdrCase.rpWorkoverPerWellMonth),
-    varOil:   pf(vdrCase.varOilPerBOE),           varWater: pf(vdrCase.varWaterPerBBL), prodTax:  pf(vdrCase.prodTaxPct),
+    varOil:   pf(vdrCase.varOilPerBOE),           gpt: pf(vdrCase.gptPerMcf), midstream: pf(vdrCase.midstreamPerMcf),
+    varWater: pf(vdrCase.varWaterPerBBL),         prodTax:  pf(vdrCase.prodTaxPct),
     oilDiff:  pf(vdrCase.oilDiff),                gasDiff:  pf(vdrCase.gasDiff), nglDiffPct: pf(vdrCase.nglDiffPct),
   }
 
@@ -73,18 +76,19 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   const ptaxUnit = smartUnit('cost', unitCostPref, maxOf('prod_taxes'))
   const capUnit  = smartUnit('cost', unitCostPref, maxOf('capex'))
   const perUnitFmt = n => fmtMoney(n, 2)
+  const perUnitGasFmt = n => fmtMoney(n, 3)
   const realizedFmt = n => fmtMoney(n, 2)
   const realizedGasFmt = n => fmtMoney(n, 2)
   const nglRatioFmt = n => (n == null || !isFinite(n)) ? '--' : `${(Number(n) * 100).toFixed(1)}%`
-  const kpf = n => fmtMoneyScaled(n, 1000, 1)
-  const perWellUnitLabel = '$M/Well/mo'
+  const perWellFmt = n => fmtMoney(n, 0)
+  const perWellUnitLabel = '$/Well/mo'
 
   const ltm = useMemo(() => {
     const metrics = [
       'netBOEd', 'grossBOEd', 'netOild', 'grossOild', 'netNGLd', 'netGasd', 'grossGasd',
       'totalLOS', 'var_oil', 'var_water', 'gpt', 'midstream', 'prod_taxes', 'prod_tax_oil',
       'prod_tax_gas', 'prod_tax_ngl', 'ad_valorem_tax', 'severanceTaxes', 'capex',
-      'costPerBOE', 'varOilPerBOE', 'gptPerBOE', 'fixedOnlyPerWell', 'workoverPerWell',
+      'costPerBOE', 'varOilPerBOE', 'gptPerMcf', 'midstreamPerMcf', 'fixedOnlyPerWell', 'workoverPerWell',
       'varWaterPerBBL',
       'jpFixedOnlyPerWell', 'rpFixedOnlyPerWell', 'jpWorkoverPerWell', 'rpWorkoverPerWell',
       'capexPerWell', 'prodTaxPct', 'oilSevTaxPct', 'gasSevTaxPct', 'nglSevTaxPct', 'adValTaxPct',
@@ -337,21 +341,6 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           )}
         </ChartCard>
 
-        <ChartCard title={`Midstream Revenue (${midUnit.label})`} ltmAvg={ltm.avg12.midstream} ltm6Avg={ltm.avg6.midstream} ltmFmt={midUnit.labelFmt}>
-          {(yDomain, ovl, clr) => (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} margin={CM}>
-                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={midUnit.tickFmt} domain={yDomain}/>
-                <Tooltip {...TP} formatter={(v,n)=>[midUnit.labelFmt(v),n]}/><Legend {...LP}/>
-                <Bar dataKey="midstream" name="Midstream" fill={C.midstream}>
-                  <LabelList dataKey="midstream" content={topLabel(midUnit.segFmt)}/>
-                </Bar>
-                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
-  </BarChart>
-            </ResponsiveContainer>
-          )}
-        </ChartCard>
-
         <ChartCard title={`Production Taxes Breakdown (${ptaxUnit.label})`} ltmAvg={ltm.avg12.prod_taxes} ltm6Avg={ltm.avg6.prod_taxes} ltmFmt={ptaxUnit.labelFmt}>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
@@ -386,6 +375,46 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
                 <Bar dataKey="capex" name="CAPEX" fill={C.capex}>
                   <LabelList dataKey="capex" content={topLabel(capUnit.segFmt)}/>
                 </Bar>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+  </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+      </div>
+
+      {/* ===== MIDSTREAM ===== */}
+      <SectionHeader title="Midstream Revenue" controls={costControls}/>
+      <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px'}}>
+
+        <ChartCard title={`Midstream Revenue (${midUnit.label})`} ltmAvg={ltm.avg12.midstream} ltm6Avg={ltm.avg6.midstream} ltmFmt={midUnit.labelFmt}>
+          {(yDomain, ovl, clr) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={CM}>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={midUnit.tickFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[midUnit.labelFmt(v),n]}/><Legend {...LP}/>
+                <Bar dataKey="midstream" name="Midstream" fill={C.midstream}>
+                  <LabelList dataKey="midstream" content={topLabel(midUnit.segFmt)}/>
+                </Bar>
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+  </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        <ChartCard title="Midstream Revenue ($/Net Mcf)" ltmAvg={ltm.avg12.midstreamPerMcf} ltm6Avg={ltm.avg6.midstreamPerMcf} ltmFmt={perUnitGasFmt} hasVdrMy>
+          {(yDomain, ovl, clr) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={CM}>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitGasFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[perUnitGasFmt(v),n]}/><Legend {...LP}/>
+                <Bar dataKey="midstreamPerMcf" name="Midstream/Net Mcf" fill={C.midstream}>
+                  <LabelList dataKey="midstreamPerMcf" content={topLabel(perUnitGasFmt)}/>
+                </Bar>
+                {rl('ltm', ltm.avg12.midstreamPerMcf, ovl, clr, perUnitGasFmt, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.midstreamPerMcf, ovl, clr, perUnitGasFmt, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.midstream, ovl, clr, perUnitGasFmt, 'VDR')}
+                {rl('my',  my.midstream,  ovl, clr, perUnitGasFmt, 'My')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -434,6 +463,25 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           )}
         </ChartCard>
 
+        <ChartCard title="GP&T ($/Mcf)" ltmAvg={ltm.avg12.gptPerMcf} ltm6Avg={ltm.avg6.gptPerMcf} ltmFmt={perUnitGasFmt} hasVdrMy>
+          {(yDomain, ovl, clr) => (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={CM}>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perUnitGasFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[perUnitGasFmt(v),n]}/><Legend {...LP}/>
+                <Bar dataKey="gptPerMcf" name="GP&T/Mcf" fill={C.gpt}>
+                  <LabelList dataKey="gptPerMcf" content={topLabel(perUnitGasFmt)}/>
+                </Bar>
+                {rl('ltm', ltm.avg12.gptPerMcf, ovl, clr, perUnitGasFmt, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.gptPerMcf, ovl, clr, perUnitGasFmt, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.gpt, ovl, clr, perUnitGasFmt, 'VDR')}
+                {rl('my',  my.gpt,  ovl, clr, perUnitGasFmt, 'My')}
+                  <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
+  </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
         <ChartCard title="Water ($/BBL water)" ltmAvg={ltm.avg12.varWaterPerBBL} ltm6Avg={ltm.avg6.varWaterPerBBL} ltmFmt={fB} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
@@ -453,76 +501,76 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
           )}
         </ChartCard>
 
-        <ChartCard title={`JP Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.avg12.jpFixedOnlyPerWell} ltm6Avg={ltm.avg6.jpFixedOnlyPerWell} ltmFmt={kpf} hasVdrMy>
+        <ChartCard title={`JP Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.avg12.jpFixedOnlyPerWell} ltm6Avg={ltm.avg6.jpFixedOnlyPerWell} ltmFmt={perWellFmt} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
-                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
-                <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perWellFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[perWellFmt(v),n]}/><Legend {...LP}/>
                 <Bar dataKey="jpFixedOnlyPerWell" name="JP Fixed/Well" fill={C.fixed}>
-                  <LabelList dataKey="jpFixedOnlyPerWell" content={topLabel(kpf)}/>
+                  <LabelList dataKey="jpFixedOnlyPerWell" content={topLabel(perWellFmt)}/>
                 </Bar>
-                {rl('ltm', ltm.avg12.jpFixedOnlyPerWell, ovl, clr, kpf, 'LTM 12mo')}
-                {rl('ltm6', ltm.avg6.jpFixedOnlyPerWell, ovl, clr, kpf, 'LTM 6mo', '2 2')}
-                {rl('vdr', vdr.jpFixed, ovl, clr, kpf, 'VDR JP')}
-                {rl('my',  my.jpFixed,  ovl, clr, kpf, 'My JP')}
+                {rl('ltm', ltm.avg12.jpFixedOnlyPerWell, ovl, clr, perWellFmt, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.jpFixedOnlyPerWell, ovl, clr, perWellFmt, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.jpFixed, ovl, clr, perWellFmt, 'VDR JP')}
+                {rl('my',  my.jpFixed,  ovl, clr, perWellFmt, 'My JP')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title={`RP Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.avg12.rpFixedOnlyPerWell} ltm6Avg={ltm.avg6.rpFixedOnlyPerWell} ltmFmt={kpf} hasVdrMy>
+        <ChartCard title={`RP Fixed LOE (${perWellUnitLabel})`} ltmAvg={ltm.avg12.rpFixedOnlyPerWell} ltm6Avg={ltm.avg6.rpFixedOnlyPerWell} ltmFmt={perWellFmt} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
-                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
-                <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perWellFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[perWellFmt(v),n]}/><Legend {...LP}/>
                 <Bar dataKey="rpFixedOnlyPerWell" name="RP Fixed/Well" fill={C.fixed}>
-                  <LabelList dataKey="rpFixedOnlyPerWell" content={topLabel(kpf)}/>
+                  <LabelList dataKey="rpFixedOnlyPerWell" content={topLabel(perWellFmt)}/>
                 </Bar>
-                {rl('ltm', ltm.avg12.rpFixedOnlyPerWell, ovl, clr, kpf, 'LTM 12mo')}
-                {rl('ltm6', ltm.avg6.rpFixedOnlyPerWell, ovl, clr, kpf, 'LTM 6mo', '2 2')}
-                {rl('vdr', vdr.rpFixed, ovl, clr, kpf, 'VDR RP')}
-                {rl('my',  my.rpFixed,  ovl, clr, kpf, 'My RP')}
+                {rl('ltm', ltm.avg12.rpFixedOnlyPerWell, ovl, clr, perWellFmt, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.rpFixedOnlyPerWell, ovl, clr, perWellFmt, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.rpFixed, ovl, clr, perWellFmt, 'VDR RP')}
+                {rl('my',  my.rpFixed,  ovl, clr, perWellFmt, 'My RP')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title={`JP Workover (${perWellUnitLabel})`} ltmAvg={ltm.avg12.jpWorkoverPerWell} ltm6Avg={ltm.avg6.jpWorkoverPerWell} ltmFmt={kpf} hasVdrMy>
+        <ChartCard title={`JP Workover (${perWellUnitLabel})`} ltmAvg={ltm.avg12.jpWorkoverPerWell} ltm6Avg={ltm.avg6.jpWorkoverPerWell} ltmFmt={perWellFmt} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
-                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
-                <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perWellFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[perWellFmt(v),n]}/><Legend {...LP}/>
                 <Bar dataKey="jpWorkoverPerWell" name="JP Workover/Well" fill={C.workover}>
-                  <LabelList dataKey="jpWorkoverPerWell" content={topLabel(kpf)}/>
+                  <LabelList dataKey="jpWorkoverPerWell" content={topLabel(perWellFmt)}/>
                 </Bar>
-                {rl('ltm', ltm.avg12.jpWorkoverPerWell, ovl, clr, kpf, 'LTM 12mo')}
-                {rl('ltm6', ltm.avg6.jpWorkoverPerWell, ovl, clr, kpf, 'LTM 6mo', '2 2')}
-                {rl('vdr', vdr.jpWkover, ovl, clr, kpf, 'VDR JP')}
-                {rl('my',  my.jpWkover,  ovl, clr, kpf, 'My JP')}
+                {rl('ltm', ltm.avg12.jpWorkoverPerWell, ovl, clr, perWellFmt, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.jpWorkoverPerWell, ovl, clr, perWellFmt, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.jpWkover, ovl, clr, perWellFmt, 'VDR JP')}
+                {rl('my',  my.jpWkover,  ovl, clr, perWellFmt, 'My JP')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
           )}
         </ChartCard>
 
-        <ChartCard title={`RP Workover (${perWellUnitLabel})`} ltmAvg={ltm.avg12.rpWorkoverPerWell} ltm6Avg={ltm.avg6.rpWorkoverPerWell} ltmFmt={kpf} hasVdrMy>
+        <ChartCard title={`RP Workover (${perWellUnitLabel})`} ltmAvg={ltm.avg12.rpWorkoverPerWell} ltm6Avg={ltm.avg6.rpWorkoverPerWell} ltmFmt={perWellFmt} hasVdrMy>
           {(yDomain, ovl, clr) => (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={CM}>
-                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={kpf} domain={yDomain}/>
-                <Tooltip {...TP} formatter={(v,n)=>[kpf(v),n]}/><Legend {...LP}/>
+                <CartesianGrid {...GP}/><XAxis dataKey="label" {...AP}/><YAxis {...AP} tickFormatter={perWellFmt} domain={yDomain}/>
+                <Tooltip {...TP} formatter={(v,n)=>[perWellFmt(v),n]}/><Legend {...LP}/>
                 <Bar dataKey="rpWorkoverPerWell" name="RP Workover/Well" fill={C.workover}>
-                  <LabelList dataKey="rpWorkoverPerWell" content={topLabel(kpf)}/>
+                  <LabelList dataKey="rpWorkoverPerWell" content={topLabel(perWellFmt)}/>
                 </Bar>
-                {rl('ltm', ltm.avg12.rpWorkoverPerWell, ovl, clr, kpf, 'LTM 12mo')}
-                {rl('ltm6', ltm.avg6.rpWorkoverPerWell, ovl, clr, kpf, 'LTM 6mo', '2 2')}
-                {rl('vdr', vdr.rpWkover, ovl, clr, kpf, 'VDR RP')}
-                {rl('my',  my.rpWkover,  ovl, clr, kpf, 'My RP')}
+                {rl('ltm', ltm.avg12.rpWorkoverPerWell, ovl, clr, perWellFmt, 'LTM 12mo')}
+                {rl('ltm6', ltm.avg6.rpWorkoverPerWell, ovl, clr, perWellFmt, 'LTM 6mo', '2 2')}
+                {rl('vdr', vdr.rpWkover, ovl, clr, perWellFmt, 'VDR RP')}
+                {rl('my',  my.rpWkover,  ovl, clr, perWellFmt, 'My RP')}
                   <ReferenceLine y={0} stroke="#374151" strokeDasharray="3 3"/>
   </BarChart>
             </ResponsiveContainer>
@@ -826,112 +874,6 @@ function RollupTab({ monthlyRollup, ariesInputs, wellData }) {
   )
 }
 
-// ─── CHART CARD ───────────────────────────────────────────────────────────────
-
-function ChartCard({ title, children, ltmAvg, ltm6Avg, ltmFmt, hasVdrMy }) {
-  const [yMin, setYMin] = useState('')
-  const [yMax, setYMax] = useState('')
-  const [showYCtrl,       setShowYCtrl]       = useState(false)
-  const [showOverlayMenu, setShowOverlayMenu] = useState(false)
-  const [overlays, setOverlays] = useState({ vdr: true, my: true, ltm: true, ltm6: true })
-  const [colors,   setColors]   = useState({ vdr: '#000000', my: '#C55A11', ltm: '#9CA3AF', ltm6: '#6B7280' })
-
-  const hasCustomY = yMin !== '' || yMax !== ''
-  const domain = [
-    yMin !== '' && !isNaN(+yMin) ? +yMin : dataMin => (dataMin < 0 ? Math.floor(dataMin * 1.55) : 0),
-    yMax !== '' && !isNaN(+yMax) ? +yMax : dataMax => Math.ceil(dataMax * 1.55),
-  ]
-
-  const toggle = (key, val) => setOverlays(p => ({ ...p, [key]: val }))
-  const setCol  = (key, val) => setColors(p => ({ ...p, [key]: val }))
-
-  const CtrlBtn = ({ label, active, hilite, onClick }) => (
-    <button onClick={onClick} style={{
-      padding:'1px 7px', fontSize:'9px', fontWeight:700, cursor:'pointer',
-      border:'1px solid', borderRadius:'3px', flexShrink:0, transition:'all 0.12s',
-      background:  hilite ? '#EFF6FF' : active ? '#F3F4F6' : 'white',
-      color:       hilite ? '#1F3864' : active ? '#374151' : '#9CA3AF',
-      borderColor: hilite ? '#1F3864' : active ? '#9CA3AF' : '#E5E7EB',
-    }}>{label}</button>
-  )
-
-  const overlayRows = [
-    { key: 'ltm', label: 'LTM 12mo Avg' },
-    { key: 'ltm6', label: 'LTM 6mo Avg' },
-    ...(hasVdrMy ? [{ key: 'vdr', label: 'VDR Case' }, { key: 'my', label: 'My Case' }] : []),
-  ]
-
-  return (
-    <div className="bg-white border border-gray-200 rounded p-4 flex flex-col" style={{boxShadow:'0 1px 3px rgba(0,0,0,0.08)'}}>
-      <div className="mb-1.5 flex-shrink-0 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-gray-900 leading-tight">{title}</h3>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <CtrlBtn label="Lines ▾" active={showOverlayMenu} hilite={false}
-            onClick={() => { setShowOverlayMenu(v => !v); setShowYCtrl(false) }}/>
-          <CtrlBtn label="Y ⚙" active={showYCtrl} hilite={hasCustomY}
-            onClick={() => { setShowYCtrl(v => !v); setShowOverlayMenu(false) }}/>
-        </div>
-      </div>
-
-      {showOverlayMenu && (
-        <div className="mb-2 p-2 bg-gray-50 border border-gray-200 rounded" style={{fontSize:'10px'}}>
-          <div className="font-bold text-gray-400 uppercase tracking-wider mb-1.5">Reference Lines</div>
-          {overlayRows.map(({ key, label }) => (
-            <div key={key} className="flex items-center gap-2 mb-1">
-              <input type="checkbox" checked={overlays[key]}
-                onChange={e => toggle(key, e.target.checked)} style={{cursor:'pointer', flexShrink:0}}/>
-              <span className="text-gray-600 flex-1 select-none">{label}</span>
-              <input type="color" value={colors[key]} title="Line color"
-                onChange={e => setCol(key, e.target.value)}
-                style={{width:'22px', height:'16px', padding:0, border:'1px solid #D1D5DB', borderRadius:'2px', cursor:'pointer', flexShrink:0}}/>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {showYCtrl && (
-        <div className="mb-2 flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] text-gray-500 font-semibold">Y-axis:</span>
-          <input type="number" step="any" placeholder="min" value={yMin}
-            onChange={e => setYMin(e.target.value)}
-            style={{width:'68px', border:'1px solid #D1D5DB', borderRadius:'3px', padding:'2px 5px', fontSize:'11px', outline:'none', color:'#374151'}}/>
-          <span className="text-[10px] text-gray-400">—</span>
-          <input type="number" step="any" placeholder="max" value={yMax}
-            onChange={e => setYMax(e.target.value)}
-            style={{width:'68px', border:'1px solid #D1D5DB', borderRadius:'3px', padding:'2px 5px', fontSize:'11px', outline:'none', color:'#374151'}}/>
-          {hasCustomY
-            ? <button onClick={() => { setYMin(''); setYMax('') }}
-                style={{padding:'2px 8px', fontSize:'10px', fontWeight:600, border:'1px solid #D1D5DB', borderRadius:'3px', background:'white', color:'#6B7280', cursor:'pointer'}}>
-                Reset
-              </button>
-            : <span className="text-[10px] text-gray-400">blank = auto</span>}
-        </div>
-      )}
-
-      <div style={{height:'224px', flexShrink:0}}>
-        {typeof children === 'function' ? children(domain, overlays, colors) : children}
-      </div>
-
-      {((ltmAvg != null && isFinite(ltmAvg)) || (ltm6Avg != null && isFinite(ltm6Avg))) && (
-        <div className="mt-2 pt-1.5 border-t border-gray-100 space-y-1">
-          {ltmAvg != null && isFinite(ltmAvg) && (
-            <div className="flex items-center justify-between">
-              <span style={{fontSize:'9px', fontWeight:700, color:'#9CA3AF', textTransform:'uppercase', letterSpacing:'0.06em'}}>LTM 12mo Avg</span>
-              <span style={{fontSize:'11px', fontWeight:700, color:'#374151'}}>{ltmFmt ? ltmFmt(ltmAvg) : ltmAvg}</span>
-            </div>
-          )}
-          {ltm6Avg != null && isFinite(ltm6Avg) && (
-            <div className="flex items-center justify-between">
-              <span style={{fontSize:'9px', fontWeight:700, color:'#6B7280', textTransform:'uppercase', letterSpacing:'0.06em'}}>LTM 6mo Avg</span>
-              <span style={{fontSize:'11px', fontWeight:700, color:'#374151'}}>{ltmFmt ? ltmFmt(ltm6Avg) : ltm6Avg}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── WELL BY WELL TAB ─────────────────────────────────────────────────────────
 
 function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
@@ -939,6 +881,8 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const my = {
     fixed:   parseFloat(myCase.jpFixedPerWellMonth) || null,
     varOil:  parseFloat(myCase.varOilPerBOE)         || null,
+    gpt:     parseFloat(myCase.gptPerMcf)            || null,
+    midstream: parseFloat(myCase.midstreamPerMcf)    || null,
     varWater: parseFloat(myCase.varWaterPerBBL)      || null,
     prodTax: parseFloat(myCase.prodTaxPct)            || null,
   }
@@ -1024,10 +968,11 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
   const isRatioPct = pk === 'nglDifferential'
   const isGas = pk === 'realizedGas' || pk === 'actualGasPrice' || pk === 'gasDifferential'
   const isPerWellK = pk === 'fixedPerWell'
+  const isPerMcf3 = pk === 'midstreamPerMcf'
   const isPerUnit2 = [
-    'costPerBOE','varOilPerBOE','varWaterPerBBL','gptPerBOE','revenuePerBOE','marginPerBOE',
+    'costPerBOE','varOilPerBOE','varWaterPerBBL','gptPerMcf','revenuePerBOE','marginPerBOE',
     'realizedOil','realizedNGL','actualOilPrice','actualNGLPrice',
-    'oilDifferential','midstreamPerBOE',
+    'oilDifferential',
   ].includes(pk)
   const axFmt = isMM  ? n=>n.toFixed(1)
               : isBoe ? n=>n.toFixed(1)
@@ -1035,10 +980,13 @@ function WellMiniChart({ data, typeId, myCase, width, height, yDomain }) {
               : isDol ? n=>fmtMoneyScaled(n, 1e6, 1)
               : isPct ? n=>`${n.toFixed(1)}%`
               : isRatioPct ? n=>`${(n*100).toFixed(1)}%`
+              : isPerMcf3 ? n=>fmtMoney(n, 3)
               : isGas ? n=>fmtMoney(n, 2)
               : isPerUnit2 ? n=>fmtMoney(n, 2)
               :         n=>fmtMoney(n, 1)
   const myRef = pk==='varOilPerBOE' && my.varOil  ? <ReferenceLine y={my.varOil}  stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
+              : pk==='gptPerMcf' && my.gpt ? <ReferenceLine y={my.gpt} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
+              : pk==='midstreamPerMcf' && my.midstream ? <ReferenceLine y={my.midstream} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='varWaterPerBBL' && my.varWater ? <ReferenceLine y={my.varWater} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='fixedPerWell'  && my.fixed   ? <ReferenceLine y={my.fixed}   stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
               : pk==='prodTaxPct'   && my.prodTax  ? <ReferenceLine y={my.prodTax} stroke={C.myCase} strokeDasharray="4 4" strokeWidth={2}/>
@@ -1432,6 +1380,23 @@ function App() {
     [inputs, opFilter]
   )
 
+  const inputChartRollups = useMemo(() => {
+    if (!rows) return { op: [], obo: [] }
+
+    const buildSliceRollup = slice => {
+      const sliceRows = filterRows(rows, slice, liftFilter)
+      const sliceBaseRollup = buildMonthlyRollup(sliceRows)
+      const sliceBaseWellData = buildWellData(sliceRows)
+      const priced = attachPricingDifferentials(sliceBaseRollup, sliceBaseWellData, pricingRows)
+      return attachHistoricalVolumes(priced.monthlyRollup, priced.wellData, volumeRows).monthlyRollup
+    }
+
+    return {
+      op: buildSliceRollup('op'),
+      obo: buildSliceRollup('obo'),
+    }
+  }, [rows, liftFilter, pricingRows, volumeRows])
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
 
@@ -1583,6 +1548,7 @@ function App() {
         {!loading && (
           <>
             {rows && tab==='inputs'          && <InputsTab          ariesInputs={inputs} setAriesInputs={setInputs} monthlyRollup={rollup}/>}
+            {rows && tab==='inputcharts'     && <InputChartsTab     rollupsBySlice={inputChartRollups} ariesInputs={inputs} defaultSlice={opFilter === 'obo' ? 'obo' : 'op'} />}
             {rows && tab==='rollup'          && <RollupTab          monthlyRollup={rollup} ariesInputs={activeInputs} wellData={wellData}/>}
             {rows && tab==='wellbywell'      && <WellByWellTab      wellData={wellData} ariesInputs={activeInputs}
                                           typeId={wbwTypeId} setTypeId={setWbwTypeId}

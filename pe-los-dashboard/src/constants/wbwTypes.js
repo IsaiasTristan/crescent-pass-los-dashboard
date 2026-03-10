@@ -28,7 +28,7 @@ export const WBW_TYPES = [
   { id:'varWaterPerBBL',group:'Costs ($M)',        label:'Water ($/Bbl)',         pk:'varWaterPerBBL',   chartType:'single', fill:C.varWater, fmt:fB,         tableFmt:n=>n.toFixed(2),       tableLabel:'Water ($/Bbl water)' },
   { id:'fixedm',        group:'Costs ($MM)',       label:'Fixed Exp ($MM)',       pk:'fixed',            chartType:'single', fill:C.fixed,   fmt:fMdol,       tableFmt:n=>(n/1e6).toFixed(1), tableLabel:'Fixed Exp ($MM)'    },
   { id:'fixedPerWell',  group:'Costs ($M)',        label:'Fixed ($/Well/mo)',     pk:'fixedPerWell',     chartType:'single', fill:C.fixed,   fmt:n=>`$${(n/1000).toFixed(1)}`, tableFmt:n=>(n/1000).toFixed(1), tableLabel:'Fixed ($/Well/mo)'  },
-  { id:'gptPerBOE',     group:'Costs ($M)',        label:'GP&T ($/Boe)',          pk:'gptPerBOE',        chartType:'single', fill:C.gpt,     fmt:fB,          tableFmt:n=>n.toFixed(2),       tableLabel:'GP&T ($/Boe)'        },
+  { id:'gptPerMcf',     group:'Costs ($M)',        label:'GP&T ($/Mcf)',          pk:'gptPerMcf',        chartType:'single', fill:C.gpt,     fmt:n=>`$${n.toFixed(3)}`, tableFmt:n=>n.toFixed(3), tableLabel:'GP&T ($/Mcf)'        },
   { id:'realizedOil',   group:'Realized Prices',  label:'Oil ($/Bbl)',           pk:'realizedOil',      chartType:'single', fill:C.oil,     fmt:fB,          tableFmt:n=>n.toFixed(2),       tableLabel:'Realized Oil ($/Bbl)'       },
   { id:'realizedNGL',   group:'Realized Prices',  label:'NGL (% WTI)',           pk:'realizedNGL',      chartType:'single', fill:C.ngl,     fmt:fB,          tableFmt:n=>n.toFixed(2),       tableLabel:'Realized NGL ($/Bbl est.)'  },
   { id:'realizedGas',   group:'Realized Prices',  label:'Gas ($/Mcf)',           pk:'realizedGas',      chartType:'single', fill:C.gas,     fmt:fG2,         tableFmt:n=>n.toFixed(2),       tableLabel:'Realized Gas ($/Mcf)'       },
@@ -49,7 +49,7 @@ export const WBW_TYPES = [
   { id:'nglSevTaxPct',  group:'Taxes',            label:'NGL Sev (% Rev)',       pk:'nglSevTaxPct',     chartType:'single', fill:C.ngl,       fmt:fP,          tableFmt:n=>n.toFixed(2),       tableLabel:'NGL Severance Tax (% Rev)'  },
   { id:'adValTaxPct',   group:'Taxes',            label:'Ad Val (% Base)',       pk:'adValTaxPct',      chartType:'single', fill:C.prodTaxes, fmt:fP,          tableFmt:n=>n.toFixed(2),       tableLabel:'Ad Valorem Tax (% Base)'    },
   { id:'midstreamm',    group:'Midstream',        label:'Midstream Rev ($MM)',   pk:'midstream',        chartType:'single', fill:C.midstream, fmt:fMdol,     tableFmt:n=>(n/1e6).toFixed(3), tableLabel:'Midstream Rev ($MM)'        },
-  { id:'midstreamBOE',  group:'Midstream',        label:'Midstream ($/Boe)',     pk:'midstreamPerBOE',  chartType:'single', fill:C.midstream, fmt:fB,        tableFmt:n=>n.toFixed(3),       tableLabel:'Midstream ($/Boe)'          },
+  { id:'midstreamMcf',  group:'Midstream',        label:'Midstream ($/Net Mcf)', pk:'midstreamPerMcf',  chartType:'single', fill:C.midstream, fmt:n=>`$${n.toFixed(3)}`, tableFmt:n=>n.toFixed(3), tableLabel:'Midstream ($/Net Mcf)' },
 ]
 
 export const WBW_GROUPS = [...new Set(WBW_TYPES.map(t => t.group))]
