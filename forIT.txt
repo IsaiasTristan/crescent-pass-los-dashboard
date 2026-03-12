@@ -5,3 +5,5 @@ migrate inputs chatys pmon a a seperate input tab
 Ability to save doenw chart settings n stuff.., includinf g colors
 table under charts
 Need to be able to do GPT analysis seperateley
+Add funcitonality so i can drop in ARIES DB and compare historicals to actuals
+Add gpt calc functionality for operated GPT cost

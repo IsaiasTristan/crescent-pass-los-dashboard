@@ -13,7 +13,7 @@ This file mirrors the project's Cursor rules so terminal and other agents see th
 
 - **Core purpose:** Private-equity due diligence tool for analyzing well-by-well Lease Operating Statements (LOS) on a private E&P acquisition. Single primary user (one PE professional doing internal DD); not a public-facing app.
 - **Primary problem:** Turn raw LOS CSV data into investment-committee-quality views: portfolio rollups, well-by-well analysis, and ARIES model assumption overlays.
-- **Key capabilities:** Ingest tab- or comma-delimited LOS CSV; aggregate by month and well; 4-tab UI (ARIES Inputs, Asset Rollup, Well by Well, LOS Table); Operated/Non-Operated and lift-type filters; export to CSV.
+- **Key capabilities:** Ingest tab- or comma-delimited LOS CSV; aggregate by month and well; 7-tab UI (ARIES Inputs, Input Charts, Asset Rollup, Well by Well, LOS Table, GPT Analysis, Historical Inputs); Operated/Non-Operated and lift-type filters; export to CSV.
 - **Architecture:** Two builds — (1) standalone `LOS Dashboard.html` (no Node.js), (2) Vite + React in `pe-los-dashboard/` (run with `npm install && npm run dev` when Node.js is available). Client-side only; no backend. Business logic in utils/ and constants/; UI in components/ and root `App.jsx`.
 
 Agents should review this scope before implementing new features or making structural changes. If the project direction changes materially, ask the user whether the scope should be updated.
@@ -49,10 +49,14 @@ _(None at this time.)_
 - **Vite:** `pe-los-dashboard/` — canonical modules:
   - `src/App.jsx` — orchestration only: state, file upload, tab routing, tab UI components
   - `src/constants/losMapping.js` — LOS_BUCKETS, COST_CAT_BUCKETS, CHART_COLORS, ARIES state shape, TABS
+  - `src/constants/gptMapping.js` — canonical midstream GPT column aliases
   - `src/constants/wbwTypes.js` — WBW_TYPES, SORT_OPTIONS
   - `src/ingest/parseCsv.js` — parseCSVText (returns `{ rows, warnings }`), parseDate, parseNum, resolveBucket
+  - `src/ingest/parseMidstreamGptCsv.js` — parseMidstreamGptCSVText for variable-format GPT statements
   - `src/domain/metrics.js` — GAS_BOE, sd, daysInMonth, emptyM, accum, metrics
+  - `src/domain/gptFormulas.js` — centralized GPT formulas (NGL yield, shrink, BTU, gas diff, NGL %WTI, GPT $/Mcf)
   - `src/selectors/buildRollups.js` — buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs
+  - `src/selectors/buildGptRollup.js` — by-meter and total GPT rollups; feeds operated GPT assumptions
   - `src/export/exportCsv.js` — exportInputs, exportHistorical, parseAriesImport
   - `src/charts/chartConfig.js` — shared Recharts config, segLabel, topLabel, rl, smartUnit, buildLTM, safeAvg
   - `src/utils/formatters.js` — display formatters (f$, fB, fP, fG, fBoed, fMcfd, fMdol, …)
@@ -101,6 +105,6 @@ Agents implement features and fixes per `ProjectBrief.md`, keep this file and `P
 
 ## Sync instruction
 
-Current implementation note: the Vite app supports a separate historical gross-volume CSV upload. Matching is done by normalized Well Name / Applicable Tag / Property Name. Current global unit-cost formulas are: oil = gross oil cost / gross oil volume; workover = gross workover cost / monthly well count; fixed = gross fixed cost / monthly well count; JP and RP fixed/workover use their own rolling JP/RP well counts; water = gross water cost / gross water volume; GP&T = gross GPT cost / gross gas volume. Status freshness check (2026-03-09): `node --version` = `v24.14.0`, `npm --version` = `11.9.0`, `npm test` passing.
+Current implementation note: the Vite app supports separate historical uploads for pricing, gross volumes, and midstream GPT statements. Matching is done by normalized Well Name / Applicable Tag / Property Name for gross-volume files. Current global unit-cost formulas are: oil = gross oil cost / gross oil volume; workover = gross workover cost / monthly well count; fixed = gross fixed cost / monthly well count; JP and RP fixed/workover use their own rolling JP/RP well counts; water = gross water cost / gross water volume; GP&T = gross GPT cost / gross gas volume. When GPT statement data is uploaded, operated rollups use GPT-derived `gptPerMcf`, `gasDifferential`, and `nglDifferential`; OBO continues to use LOS-derived values. Status freshness check (2026-03-11): `node --version` = `v24.14.0`, `npm --version` = `11.9.0`, `npm test` passing (`113` tests).
 
 When you change Cursor rules (e.g. in `.cursor/rules/`) or update `ProjectBrief.md`, update this file so terminal and other agents keep the same guidance. Do not add or remove rules here; mirror only.

@@ -212,6 +212,8 @@ export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
       gasDifferential: actualGas != null ? (m.realizedGas - actualGas) : null,
       // NGL differential is defined as realized NGL price divided by WTI.
       nglDifferential: (actualNGL != null && actualNGL !== 0) ? (m.realizedNGL / actualNGL) : null,
+      gasDiff: actualGas != null ? (m.realizedGas - actualGas) : null,
+      nglDiffPct: (actualNGL != null && actualNGL !== 0) ? (m.realizedNGL / actualNGL) * 100 : null,
     }
   }
 
@@ -222,6 +224,50 @@ export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
       monthlyData: (w.monthlyData || []).map(withPricing),
     })),
   }
+}
+
+// Apply GPT-statement-derived assumptions to operated monthly rollups.
+// OBO and Total slices keep LOS-derived values by design.
+export function attachGptToRollup(monthlyRollup, gptTotalRollup, opFilter) {
+  if (!monthlyRollup?.length || !gptTotalRollup?.length || opFilter !== 'op') {
+    return monthlyRollup || []
+  }
+
+  const byMonth = Object.fromEntries(
+    gptTotalRollup
+      .filter(row => row?.monthKey)
+      .map(row => [row.monthKey, row])
+  )
+
+  return monthlyRollup.map(month => {
+    const gpt = byMonth[month.monthKey]
+    if (!gpt) return month
+
+    const gptPerMcf = (gpt.gptCostPerMcf != null && isFinite(gpt.gptCostPerMcf))
+      ? Number(gpt.gptCostPerMcf)
+      : month.gptPerMcf
+    const gasDifferential = (gpt.gasDiff != null && isFinite(gpt.gasDiff))
+      ? Number(gpt.gasDiff)
+      : month.gasDifferential
+    const nglRatio = (gpt.nglPricePctWti != null && isFinite(gpt.nglPricePctWti))
+      ? Number(gpt.nglPricePctWti) / 100
+      : month.nglDifferential
+
+    return {
+      ...month,
+      gptPerMcf,
+      gasDifferential,
+      nglDifferential: nglRatio,
+      gasDiff: gasDifferential,
+      nglDiffPct: nglRatio != null ? nglRatio * 100 : null,
+      // keep raw percent for table/auditability
+      gptNglPricePctWti: gpt.nglPricePctWti,
+      gptGasShrinkPct: gpt.gasShrinkPct,
+      gptBtuFactor: gpt.btuFactor,
+      gptNglYield: gpt.nglYield,
+      gptCostPerMcf: gpt.gptCostPerMcf,
+    }
+  })
 }
 
 function normalizeIdentifier(value) {

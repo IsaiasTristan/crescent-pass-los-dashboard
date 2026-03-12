@@ -95,8 +95,8 @@ export const ARIES_INPUT_FIELDS = [
   { key: 'varWaterPerBBL',         label: 'Water Unit Cost',    unit: '$/Gross BBL water', lowerIsBetter: true,  histKey: 'varWaterPerBBL', fmt: v => `$${Number(v).toFixed(2)}` },
   { key: 'prodTaxPct',             label: 'Production Taxes',   unit: '% of revenue',   lowerIsBetter: true,  histKey: 'prodTaxPct',   fmt: v => `${Number(v).toFixed(2)}%` },
   { key: 'oilDiff',                label: 'Oil Differential',   unit: '$/BBL vs. WTI',  lowerIsBetter: false, histKey: null,           fmt: v => `$${Number(v).toFixed(2)}` },
-  { key: 'gasDiff',                label: 'Gas Differential',   unit: '$/MMBTU vs. HH', lowerIsBetter: false, histKey: null,           fmt: v => `$${Number(v).toFixed(3)}` },
-  { key: 'nglDiffPct',             label: 'NGL Differential',   unit: '% of WTI',       lowerIsBetter: false, histKey: null,           fmt: v => `${Number(v).toFixed(1)}%` },
+  { key: 'gasDiff',                label: 'Gas Differential',   unit: '$/MMBTU vs. HH', lowerIsBetter: false, histKey: 'gasDiff',      fmt: v => `$${Number(v).toFixed(3)}` },
+  { key: 'nglDiffPct',             label: 'NGL Differential',   unit: '% of WTI',       lowerIsBetter: false, histKey: 'nglDiffPct',   fmt: v => `${Number(v).toFixed(1)}%` },
 ]
 
 // Key map from export label → ARIES state key (used by parseAriesImport)
@@ -144,6 +144,7 @@ export const TABS = [
   { id: 'rollup',          label: 'Asset Rollup' },
   { id: 'wellbywell',      label: 'Well by Well Charts' },
   { id: 'wellbywelltable', label: 'LOS Table' },
+  { id: 'gpt',             label: 'GPT Analysis' },
   { id: 'historicalpricing', label: 'Historical Inputs' },
 ]
 

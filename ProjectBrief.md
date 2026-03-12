@@ -35,7 +35,7 @@ Identical features to the HTML version but with hot-reload and optional auto-loa
 ## Current Status
 
 ### Working
-- [x] 4-tab layout (ARIES Inputs, Asset Rollup, Well by Well, LOS Table)
+- [x] 7-tab layout (ARIES Inputs, Input Charts, Asset Rollup, Well by Well, LOS Table, GPT Analysis, Historical Inputs)
 - [x] CSV parsing — tab- or comma-delimited, dynamic column detection from header
 - [x] Data aggregations — monthly rollup + per-well monthly series
 - [x] Sign flip: oil/gas/NGL revenue + volume stored negative in source, flipped via Math.abs()
@@ -48,6 +48,9 @@ Identical features to the HTML version but with hot-reload and optional auto-loa
 - [x] Operated / Non-Operated / Total filter in nav bar — filters all tabs simultaneously
 - [x] Lift type filter in nav bar (All | JP | RP | Other) — stacked below op filter, composes with AND logic
 - [x] ARIES Inputs split: Operated and Non-Operated sub-columns for both VDR Case and My Case
+- [x] Midstream GPT Analysis tab — variable-format statement upload, by-meter monthly output table, and total rollup table
+- [x] GPT formula module centralized in one audit-friendly file (`src/domain/gptFormulas.js`)
+- [x] Operated-only GPT enrichment of rollup assumptions (`gptPerMcf`, `gasDifferential`, `nglDifferential`) from uploaded midstream statements
 - [x] Export to CSV (ARIES inputs + full historical data)
 - [x] BOM stripping for Excel-exported CSVs
 - [x] Dependency guard with helpful error messages if CDN scripts fail
@@ -244,13 +247,17 @@ Sensitive data files (raw LOS CSVs under `01. Analysis/` and `pe-los-dashboard/p
         ├── index.css
         ├── constants/
         │   ├── losMapping.js          ← LOS_BUCKETS, COST_CAT_BUCKETS, CHART_COLORS, ARIES state shape, TABS
+        │   ├── gptMapping.js          ← canonical midstream GPT column aliases
         │   └── wbwTypes.js            ← WBW_TYPES, WBW_GROUPS, SORT_OPTIONS (imports from losMapping + formatters)
         ├── ingest/
-        │   └── parseCsv.js            ← parseCSVText, parseDate, parseNum, resolveBucket, monthKey, monthDisp
+        │   ├── parseCsv.js            ← parseCSVText, parseDate, parseNum, resolveBucket, monthKey, monthDisp
+        │   ├── parseMidstreamGptCsv.js ← parseMidstreamGptCSVText (variable-format GPT statements)
         ├── domain/
-        │   └── metrics.js             ← GAS_BOE, sd, daysInMonth, emptyM, accum, metrics
+        │   ├── metrics.js             ← GAS_BOE, sd, daysInMonth, emptyM, accum, metrics
+        │   └── gptFormulas.js         ← centralized GPT formulas (NGL yield, shrink, BTU, gas diff, NGL %WTI, GPT $/Mcf)
         ├── selectors/
-        │   └── buildRollups.js        ← buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs
+        │   ├── buildRollups.js        ← buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs, attachGptToRollup
+        │   └── buildGptRollup.js      ← by-meter and total GPT rollups from parsed statement rows
         ├── export/
         │   └── exportCsv.js           ← exportInputs, exportHistorical, parseAriesImport
         ├── charts/
@@ -265,6 +272,9 @@ Sensitive data files (raw LOS CSVs under `01. Analysis/` and `pe-los-dashboard/p
         │   └── WellByWellTab.jsx      ← placeholder (logic now in App.jsx + constants/wbwTypes.js)
         └── __tests__/
             ├── parseCsv.test.js       ← parseDate, parseNum, resolveBucket
+            ├── parseMidstreamGptCsv.test.js ← GPT statement parser coverage
+            ├── gptFormulas.test.js    ← GPT formula coverage
+            ├── buildGptRollup.test.js ← GPT rollup coverage
             ├── metrics.test.js        ← sd, daysInMonth, accum, metrics
             └── buildRollups.test.js   ← buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs
 ```
@@ -369,6 +379,13 @@ DISCORD_CHANNEL_ID  = your-channel-id
 ---
 
 ## Session Log (reverse chronological)
+
+**2026-03-11 — Session 16**
+- **New GPT Analysis pipeline added** with modular parsing and assumptions: `src/constants/gptMapping.js`, `src/ingest/parseMidstreamGptCsv.js`, `src/domain/gptFormulas.js`, `src/selectors/buildGptRollup.js`, and `src/components/tabs/GptTab.jsx`.
+- **Operated-only integration implemented**: uploaded GPT analysis now overrides operated monthly rollup assumptions for `gptPerMcf`, `gasDifferential`, and `nglDifferential` (plus ARIES historical average support via `gasDiff` and `nglDiffPct` fields).
+- **Formula policy implemented per user guidance**: gas differential derivation uses explicit gas diff if present, else `(Residue Gas Sales / Residue Gas Volume) - benchmark`, with benchmark precedence `HHub` then generic benchmark gas price.
+- **Validation added**: new tests `parseMidstreamGptCsv.test.js`, `gptFormulas.test.js`, and `buildGptRollup.test.js`.
+- **Status freshness check:** confirmed `node --version = v24.14.0`, `npm --version = 11.9.0`, and `npm test` passes (`113` tests).
 
 **2026-03-09 — Session 15**
 - **Global unit-cost formulas updated** to the latest user definitions: oil unit cost now uses `gross oil cost / gross oil volume`; GP&T uses `gross GPT cost / gross gas volume`; water uses `gross water cost / gross water volume`.

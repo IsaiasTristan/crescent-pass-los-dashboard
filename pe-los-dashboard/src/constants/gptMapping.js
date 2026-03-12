@@ -1,0 +1,168 @@
+// ─── Midstream GPT statement column aliases ──────────────────────────────────
+// Canonical keys are consumed by parseMidstreamGptCsv.js.
+// Add company-specific header aliases here without changing downstream logic.
+
+export const GPT_COLUMN_ALIASES = {
+  date: [
+    'date',
+    'month',
+    'period',
+    'statement date',
+    'statement month',
+    'service end date',
+    'production month',
+  ],
+  meterName: [
+    'meter name',
+    'meter',
+    'meter/plant',
+    'plant',
+    'plant name',
+    'facility',
+    'location',
+    'delivery point',
+  ],
+  inletVolumeMcf: [
+    'gathering inlet volume (mcf)',
+    'gathering inlet volume',
+    'inlet volume (mcf)',
+    'inlet volume',
+    'inlet mcf',
+    'gross wh database',
+    'gross wh plant',
+  ],
+  gasShrinkPct: [
+    'gas shrink',
+    'shrink',
+    'shrink (%)',
+    'gas shrink (%)',
+  ],
+  gasShrinkMcf: [
+    'gas shrink (mcf)',
+    'shrink mcf',
+    'shrink volume',
+  ],
+  btuFactor: [
+    'residue gas btu factor',
+    'btu factor',
+    'post-pop residue gas btu factor',
+    'pre-pop residue gas btu factor',
+    'gross wh plant btu factor',
+  ],
+  residueGasVolumeMcf: [
+    'residue gas volume (mcf)',
+    'residue gas volume',
+    'residue gas',
+    'post-pop net residue gas',
+    'gas available for sale',
+    'post-pop residue gas',
+  ],
+  residueGasSales: [
+    'residue gas sales',
+    'residue gas sales ($)',
+    'gas sales',
+    'net gas sales',
+  ],
+  gasDifferential: [
+    'gas differential',
+    'gas differential ($/mcf)',
+    'gas diff',
+    'gas basis',
+  ],
+  hhubPrice: [
+    'henry hub',
+    'henry hub price',
+    'hhub',
+    'hh',
+  ],
+  benchmarkGasPrice: [
+    'benchmark gas price',
+    'benchmark gas',
+    'gas benchmark',
+    'hsc',
+    'waha',
+    'index gas price',
+    'residue gas index price',
+    'gas price',
+  ],
+  nglVolumeBbl: [
+    'ngl volume',
+    'ngl volume (bbl)',
+    'ngl prod',
+    'ngl prod (bbl)',
+    'ngl gallons',
+  ],
+  nglYield: [
+    'ngl yield',
+    'ngl yield (bbl/mcf)',
+    'ngl bbl per mcf',
+  ],
+  nglSales: [
+    'ngl sales',
+    'ngl sales ($)',
+    'net ngl sales',
+  ],
+  nglRealizedPrice: [
+    'ngl realized price',
+    'ngl price',
+    'realized ngl price',
+    'ngl price ($/bbl)',
+  ],
+  nglDifferentialPct: [
+    'ngl differential',
+    'ngl differential (%)',
+    'ngl % wti',
+    'ngl as % of wti',
+    'ngl pct wti',
+  ],
+  wtiPrice: [
+    'wti',
+    'wti price',
+    'wti cushing',
+  ],
+  totalMidstreamFee: [
+    'total midstream fee',
+    'total midstream fee ($)',
+    'gathering & treatment fees',
+    'gathering and treatment fees',
+    'gathering treatment fees',
+    'total gpt fees',
+    'gpt fees',
+  ],
+  gatheringFee: [
+    'gathering fee',
+    'gathering fees',
+    'gathering charge',
+  ],
+  processingFee: [
+    'processing fee',
+    'processing fees',
+    'processing charge',
+  ],
+  compressionFee: [
+    'compression fee',
+    'compression fees',
+    'compression charge',
+  ],
+  treatingFee: [
+    'treating fee',
+    'treating fees',
+    'treatment fee',
+  ],
+  otherMidstreamFee: [
+    'other midstream fee',
+    'other fee',
+    'other fees',
+    'fuel fee',
+    'admin fee',
+  ],
+}
+
+export const GPT_OUTPUT_KEYS = [
+  'nglYield',
+  'gasShrinkPct',
+  'btuFactor',
+  'gasDiff',
+  'nglPricePctWti',
+  'gptCostPerMcf',
+]

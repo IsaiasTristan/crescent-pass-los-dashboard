@@ -9,7 +9,8 @@ import {
 import { CHART_COLORS as C, TABS, INITIAL_ARIES_INPUTS } from './constants/losMapping.js'
 import { WBW_TYPES, WBW_GROUPS, SORT_OPTIONS } from './constants/wbwTypes.js'
 import { parseCSVText } from './ingest/parseCsv.js'
-import { buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs, attachPricingDifferentials, attachHistoricalVolumes } from './selectors/buildRollups.js'
+import { buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs, attachPricingDifferentials, attachHistoricalVolumes, attachGptToRollup } from './selectors/buildRollups.js'
+import { buildGptRollup } from './selectors/buildGptRollup.js'
 import { exportHistorical, exportDataQualityReport } from './export/exportCsv.js'
 import { f$, fB, fP, fG2, fBoed, fMcfd, fMdol } from './utils/formatters.js'
 import {
@@ -19,7 +20,7 @@ import {
 import { buildMonthlyChartTable, buildWellChartTableConfig } from './charts/chartTableConfig.js'
 import { ChartCard } from './components/charts/ChartCard.jsx'
 import { ChartDataTable } from './components/charts/ChartDataTable.jsx'
-import { InputsTab, InputChartsTab, LOSTableTab, HistoricalPricingTab } from './components/tabs/index.js'
+import { InputsTab, InputChartsTab, LOSTableTab, HistoricalPricingTab, GptTab } from './components/tabs/index.js'
 
 // ─── ROLLUP TAB ───────────────────────────────────────────────────────────────
 
@@ -1455,6 +1456,10 @@ function App() {
   const [volumeWarnings, setVolumeWarnings] = useState([])
   const [volumeError, setVolumeError] = useState(null)
   const [volumeFilename, setVolumeFilename] = useState('')
+  const [gptRows, setGptRows] = useState([])
+  const [gptWarnings, setGptWarnings] = useState([])
+  const [gptError, setGptError] = useState(null)
+  const [gptFilename, setGptFilename] = useState('')
 
   const processText = useCallback((text, name) => {
     setLoading(true); setError(null); setWarnings([]); setDataIssues([])
@@ -1481,13 +1486,18 @@ function App() {
 
   const baseRollup   = useMemo(() => filteredRows ? buildMonthlyRollup(filteredRows) : [], [filteredRows])
   const baseWellData = useMemo(() => filteredRows ? buildWellData(filteredRows)      : [], [filteredRows])
+  const gptRollup = useMemo(() => buildGptRollup(gptRows), [gptRows])
   const pricedData = useMemo(
     () => attachPricingDifferentials(baseRollup, baseWellData, pricingRows),
     [baseRollup, baseWellData, pricingRows]
   )
+  const gptAdjustedRollup = useMemo(
+    () => attachGptToRollup(pricedData.monthlyRollup, gptRollup.totalRollup, opFilter),
+    [pricedData.monthlyRollup, gptRollup.totalRollup, opFilter]
+  )
   const { monthlyRollup: rollup, wellData, warnings: volumeMatchWarnings, histGrossWaterByMonth } = useMemo(
-    () => attachHistoricalVolumes(pricedData.monthlyRollup, pricedData.wellData, volumeRows, opFilter),
-    [pricedData, volumeRows, opFilter]
+    () => attachHistoricalVolumes(gptAdjustedRollup, pricedData.wellData, volumeRows, opFilter),
+    [gptAdjustedRollup, pricedData.wellData, volumeRows, opFilter]
   )
 
   const activeInputs = useMemo(
@@ -1503,14 +1513,15 @@ function App() {
       const sliceBaseRollup = buildMonthlyRollup(sliceRows)
       const sliceBaseWellData = buildWellData(sliceRows)
       const priced = attachPricingDifferentials(sliceBaseRollup, sliceBaseWellData, pricingRows)
-      return attachHistoricalVolumes(priced.monthlyRollup, priced.wellData, volumeRows, slice).monthlyRollup
+      const gptAdjusted = attachGptToRollup(priced.monthlyRollup, gptRollup.totalRollup, slice)
+      return attachHistoricalVolumes(gptAdjusted, priced.wellData, volumeRows, slice).monthlyRollup
     }
 
     return {
       op: buildSliceRollup('op'),
       obo: buildSliceRollup('obo'),
     }
-  }, [rows, liftFilter, pricingRows, volumeRows])
+  }, [rows, liftFilter, pricingRows, volumeRows, gptRollup.totalRollup])
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -1621,7 +1632,7 @@ function App() {
           </div>
         )}
 
-        {!loading && !error && !rows && tab !== 'historicalpricing' && <UploadZone onFile={processFile}/>}
+        {!loading && !error && !rows && tab !== 'historicalpricing' && tab !== 'gpt' && <UploadZone onFile={processFile}/>}
 
         {!loading && rows && warnings.length > 0 && (
           <div className="mb-4 bg-amber-50 border border-amber-200 rounded p-4 space-y-2">
@@ -1669,6 +1680,18 @@ function App() {
                                           typeId={wbwTypeId} setTypeId={setWbwTypeId}
                                           sortId={wbwSortId} setSortId={setWbwSortId}/>}
             {rows && tab==='wellbywelltable' && <LOSTableTab        rawRows={filteredRows || []} wellData={wellData}/>}
+            {tab==='gpt' && (
+              <GptTab
+                gptRows={gptRows}
+                setGptRows={setGptRows}
+                gptWarnings={gptWarnings}
+                setGptWarnings={setGptWarnings}
+                gptError={gptError}
+                setGptError={setGptError}
+                gptFilename={gptFilename}
+                setGptFilename={setGptFilename}
+              />
+            )}
             {tab==='historicalpricing' && (
               <HistoricalPricingTab
                 pricingRows={pricingRows}
