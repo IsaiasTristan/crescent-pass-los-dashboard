@@ -1,38 +1,12 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useCallback } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, LabelList,
 } from 'recharts'
-import { parseHistoricalPricingCSVText } from '../../ingest/parseHistoricalPricingCsv.js'
-import { parseHistoricalVolumesCSVText } from '../../ingest/parseHistoricalVolumesCsv.js'
+import { parseHistoricalPricingCSVText, parseHistoricalPricingCSVWithMapping } from '../../ingest/parseHistoricalPricingCsv.js'
+import { parseHistoricalVolumesCSVText, parseHistoricalVolumesCSVWithMapping } from '../../ingest/parseHistoricalVolumesCsv.js'
 import { CM, GP, AP, TP, LP, topLabel } from '../../charts/chartConfig.jsx'
-
-function UploadBox({ onFile, title, subtitle }) {
-  const [drag, setDrag] = useState(false)
-  const onDrop = e => {
-    e.preventDefault()
-    setDrag(false)
-    const f = e.dataTransfer.files[0]
-    if (f) onFile(f)
-  }
-  const onPick = e => {
-    const f = e.target.files[0]
-    if (f) onFile(f)
-  }
-
-  return (
-    <label
-      onDrop={onDrop}
-      onDragOver={e => { e.preventDefault(); setDrag(true) }}
-      onDragLeave={() => setDrag(false)}
-      className={`block border border-dashed rounded p-4 text-center cursor-pointer transition-colors
-        ${drag ? 'border-[#1F3864] bg-blue-50' : 'border-gray-300 bg-white hover:border-gray-400'}`}
-    >
-      <input type="file" accept=".csv,.txt" className="hidden" onChange={onPick} />
-      <p className="text-xs text-gray-700 font-semibold">{title}</p>
-      <p className="text-[11px] text-gray-500 mt-1">{subtitle}</p>
-    </label>
-  )
-}
+import { DataSourceMapper } from '../DataSourceMapper.jsx'
+import { UploadZone } from '../shared/UploadZone.jsx'
 
 function fmt(v, d = 2) {
   return v == null ? '--' : `$${Number(v).toFixed(d)}`
@@ -70,53 +44,61 @@ export function HistoricalPricingTab({
   const [loading, setLoading] = useState(false)
   const [volumeLoading, setVolumeLoading] = useState(false)
 
-  const onPricingFile = file => {
+  // Pending file states for DataSourceMapper
+  const [pendingPricingFile, setPendingPricingFile] = useState(null)
+  const [pendingVolumeFile, setPendingVolumeFile] = useState(null)
+
+  const onPricingFile = useCallback(file => {
+    const reader = new FileReader()
+    reader.onload = e => setPendingPricingFile({ text: e.target.result, filename: file.name })
+    reader.onerror = () => setPricingError?.('Failed to read historical pricing file.')
+    reader.readAsText(file)
+  }, [setPricingError])
+
+  const handlePricingMappingConfirm = useCallback(({ columnMap, unitOverrides, text, filename }) => {
+    setPendingPricingFile(null)
     setLoading(true)
     setPricingError?.(null)
     setPricingWarnings?.([])
-    const reader = new FileReader()
-    reader.onload = e => {
+    setTimeout(() => {
       try {
-        const { rows, warnings: parseWarnings } = parseHistoricalPricingCSVText(e.target.result)
+        const { rows, warnings: parseWarnings } = parseHistoricalPricingCSVWithMapping(text, columnMap, unitOverrides)
         setPricingRows?.(rows)
         setPricingWarnings?.(parseWarnings || [])
-        setPricingFilename?.(file.name || 'historical_pricing.csv')
+        setPricingFilename?.(filename || 'historical_pricing.csv')
       } catch (err) {
         setPricingError?.(err.message)
       } finally {
         setLoading(false)
       }
-    }
-    reader.onerror = () => {
-      setPricingError?.('Failed to read historical pricing file.')
-      setLoading(false)
-    }
-    reader.readAsText(file)
-  }
+    }, 50)
+  }, [setPricingRows, setPricingWarnings, setPricingError, setPricingFilename])
 
-  const onVolumeFile = file => {
+  const onVolumeFile = useCallback(file => {
+    const reader = new FileReader()
+    reader.onload = e => setPendingVolumeFile({ text: e.target.result, filename: file.name })
+    reader.onerror = () => setVolumeError?.('Failed to read historical gross-volume file.')
+    reader.readAsText(file)
+  }, [setVolumeError])
+
+  const handleVolumeMappingConfirm = useCallback(({ columnMap, unitOverrides, text, filename }) => {
+    setPendingVolumeFile(null)
     setVolumeLoading(true)
     setVolumeError?.(null)
     setVolumeWarnings?.([])
-    const reader = new FileReader()
-    reader.onload = e => {
+    setTimeout(() => {
       try {
-        const { rows, warnings: parseWarnings } = parseHistoricalVolumesCSVText(e.target.result)
+        const { rows, warnings: parseWarnings } = parseHistoricalVolumesCSVWithMapping(text, columnMap, unitOverrides)
         setVolumeRows?.(rows)
         setVolumeWarnings?.(parseWarnings || [])
-        setVolumeFilename?.(file.name || 'historical_gross_volumes.csv')
+        setVolumeFilename?.(filename || 'historical_gross_volumes.csv')
       } catch (err) {
         setVolumeError?.(err.message)
       } finally {
         setVolumeLoading(false)
       }
-    }
-    reader.onerror = () => {
-      setVolumeError?.('Failed to read historical gross-volume file.')
-      setVolumeLoading(false)
-    }
-    reader.readAsText(file)
-  }
+    }, 50)
+  }, [setVolumeRows, setVolumeWarnings, setVolumeError, setVolumeFilename])
 
   const chartRows = useMemo(
     () => pricingRows.map(r => ({
@@ -167,18 +149,48 @@ export function HistoricalPricingTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <UploadBox
-          onFile={onPricingFile}
-          title="Drop historical pricing CSV or click to browse"
-          subtitle="Expected columns: Date/Month, WTI, Henry Hub, MEH basis or MEH, HSC basis or HSC."
+      {/* Pricing column mapper */}
+      {pendingPricingFile && (
+        <DataSourceMapper
+          text={pendingPricingFile.text}
+          filename={pendingPricingFile.filename}
+          defaultSourceType="pricing"
+          onConfirm={({ columnMap, unitOverrides, text }) =>
+            handlePricingMappingConfirm({ columnMap, unitOverrides, text, filename: pendingPricingFile.filename })
+          }
+          onCancel={() => setPendingPricingFile(null)}
         />
-        <UploadBox
-          onFile={onVolumeFile}
-          title="Drop historical gross-volume CSV or click to browse"
-          subtitle="Expected columns: Date/Month, Well Name or Applicable Tag, and gross Oil/Gas/NGL/Water volume columns."
+      )}
+
+      {/* Volume column mapper */}
+      {pendingVolumeFile && (
+        <DataSourceMapper
+          text={pendingVolumeFile.text}
+          filename={pendingVolumeFile.filename}
+          defaultSourceType="volumes"
+          onConfirm={({ columnMap, unitOverrides, text }) =>
+            handleVolumeMappingConfirm({ columnMap, unitOverrides, text, filename: pendingVolumeFile.filename })
+          }
+          onCancel={() => setPendingVolumeFile(null)}
         />
-      </div>
+      )}
+
+      {!pendingPricingFile && !pendingVolumeFile && (
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <UploadZone
+            onFile={onPricingFile}
+            title="Drop historical pricing CSV here or click to browse"
+            subtitle="Supports variable headers · auto-mapping step opens after upload"
+            hint="Expected: Date/Month · WTI · Henry Hub · MEH/HSC price or basis"
+          />
+          <UploadZone
+            onFile={onVolumeFile}
+            title="Drop historical gross-volume CSV here or click to browse"
+            subtitle="Supports variable headers · auto-mapping step opens after upload"
+            hint="Expected: Date/Month · Well Name or Applicable Tag · gross Oil/Gas/NGL/Water volumes"
+          />
+        </div>
+      )}
 
       {loading && <div className="text-xs text-gray-500">Parsing historical pricing CSV...</div>}
       {volumeLoading && <div className="text-xs text-gray-500">Parsing historical gross-volume CSV...</div>}

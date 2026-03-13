@@ -8,7 +8,7 @@ import {
 // ─── Canonical modules ────────────────────────────────────────────────────────
 import { CHART_COLORS as C, TABS, INITIAL_ARIES_INPUTS } from './constants/losMapping.js'
 import { WBW_TYPES, WBW_GROUPS, SORT_OPTIONS } from './constants/wbwTypes.js'
-import { parseCSVText } from './ingest/parseCsv.js'
+import { parseCSVText, parseCSVWithMapping } from './ingest/parseCsv.js'
 import { buildMonthlyRollup, buildWellData, filterRows, selectActiveInputs, attachPricingDifferentials, attachHistoricalVolumes, attachGptToRollup } from './selectors/buildRollups.js'
 import { buildGptRollup } from './selectors/buildGptRollup.js'
 import { exportHistorical, exportDataQualityReport } from './export/exportCsv.js'
@@ -21,6 +21,7 @@ import { buildMonthlyChartTable, buildWellChartTableConfig } from './charts/char
 import { ChartCard } from './components/charts/ChartCard.jsx'
 import { ChartDataTable } from './components/charts/ChartDataTable.jsx'
 import { InputsTab, InputChartsTab, LOSTableTab, HistoricalPricingTab, GptTab } from './components/tabs/index.js'
+import { DataSourceMapper } from './components/DataSourceMapper.jsx'
 
 // ─── ROLLUP TAB ───────────────────────────────────────────────────────────────
 
@@ -1460,6 +1461,11 @@ function App() {
   const [gptWarnings, setGptWarnings] = useState([])
   const [gptError, setGptError] = useState(null)
   const [gptFilename, setGptFilename] = useState('')
+  // Lifted from GptTab so the pending file (and its DataSourceMapper state) survives tab switches
+  const [pendingGptFile, setPendingGptFile] = useState(null)
+
+  // Pending LOS file: set when a file is dropped, cleared after mapping confirmed/cancelled
+  const [pendingLosFile, setPendingLosFile] = useState(null)
 
   const processText = useCallback((text, name) => {
     setLoading(true); setError(null); setWarnings([]); setDataIssues([])
@@ -1474,10 +1480,29 @@ function App() {
 
   const processFile = useCallback(file => {
     const r = new FileReader()
-    r.onload  = e => processText(e.target.result, file.name)
+    r.onload = e => {
+      // Show the DataSourceMapper for the user to confirm column mapping
+      setPendingLosFile({ text: e.target.result, filename: file.name })
+    }
     r.onerror = () => { setError('Failed to read file.'); setLoading(false) }
     r.readAsText(file)
-  }, [processText])
+  }, [])
+
+  const handleLosMappingConfirm = useCallback(({ sourceType, columnMap, unitOverrides, text, filename }) => {
+    setPendingLosFile(null)
+    setLoading(true); setError(null); setWarnings([]); setDataIssues([])
+    setTimeout(() => {
+      try {
+        const { rows: r, warnings: w, issues: q } = parseCSVWithMapping(text, columnMap, unitOverrides)
+        setRows(r); setFname(filename || 'data.csv'); setError(null); setWarnings(w || []); setDataIssues(q || [])
+      } catch (e) { setError(e.message) }
+      finally { setLoading(false) }
+    }, 50)
+  }, [])
+
+  const handleLosMappingCancel = useCallback(() => {
+    setPendingLosFile(null)
+  }, [])
 
   const filteredRows = useMemo(
     () => filterRows(rows, opFilter, liftFilter),
@@ -1632,7 +1657,22 @@ function App() {
           </div>
         )}
 
-        {!loading && !error && !rows && tab !== 'historicalpricing' && tab !== 'gpt' && <UploadZone onFile={processFile}/>}
+        {/* LOS column mapping confirmation — shown after file drop */}
+        {!loading && pendingLosFile && (
+          <div className="mb-6">
+            <DataSourceMapper
+              text={pendingLosFile.text}
+              filename={pendingLosFile.filename}
+              defaultSourceType="los"
+              onConfirm={({ sourceType, columnMap, unitOverrides, text }) =>
+                handleLosMappingConfirm({ sourceType, columnMap, unitOverrides, text, filename: pendingLosFile.filename })
+              }
+              onCancel={handleLosMappingCancel}
+            />
+          </div>
+        )}
+
+        {!loading && !pendingLosFile && !error && !rows && tab !== 'historicalpricing' && tab !== 'gpt' && <UploadZone onFile={processFile}/>}
 
         {!loading && rows && warnings.length > 0 && (
           <div className="mb-4 bg-amber-50 border border-amber-200 rounded p-4 space-y-2">
@@ -1680,7 +1720,10 @@ function App() {
                                           typeId={wbwTypeId} setTypeId={setWbwTypeId}
                                           sortId={wbwSortId} setSortId={setWbwSortId}/>}
             {rows && tab==='wellbywelltable' && <LOSTableTab        rawRows={filteredRows || []} wellData={wellData}/>}
-            {tab==='gpt' && (
+            {/* GPT and HistoricalPricing tabs use CSS display toggle (not conditional mount)
+                so that the DataSourceMapper's internal mapping state is preserved when
+                the user switches away and returns without re-uploading. */}
+            <div style={{ display: tab === 'gpt' ? 'block' : 'none' }}>
               <GptTab
                 gptRows={gptRows}
                 setGptRows={setGptRows}
@@ -1690,9 +1733,12 @@ function App() {
                 setGptError={setGptError}
                 gptFilename={gptFilename}
                 setGptFilename={setGptFilename}
+                pendingGptFile={pendingGptFile}
+                setPendingGptFile={setPendingGptFile}
+                pricingRows={pricingRows}
               />
-            )}
-            {tab==='historicalpricing' && (
+            </div>
+            <div style={{ display: tab === 'historicalpricing' ? 'block' : 'none' }}>
               <HistoricalPricingTab
                 pricingRows={pricingRows}
                 setPricingRows={setPricingRows}
@@ -1713,7 +1759,7 @@ function App() {
                 volumeMatchWarnings={volumeMatchWarnings}
                 histGrossWaterByMonth={histGrossWaterByMonth}
               />
-            )}
+            </div>
           </>
         )}
 

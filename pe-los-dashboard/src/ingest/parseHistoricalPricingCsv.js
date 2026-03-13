@@ -171,3 +171,96 @@ export function parseHistoricalPricingCSVText(text) {
 
   return { rows: out, warnings }
 }
+
+/**
+ * Parse historical pricing CSV using a pre-confirmed column mapping from DataSourceMapper.
+ *
+ * @param {string} text - Raw CSV text.
+ * @param {{ [canonicalFieldId: string]: number }} columnMap
+ * @param {{ [canonicalFieldId: string]: string }} [unitOverrides]
+ * @returns {{ rows: object[], warnings: string[] }}
+ */
+export function parseHistoricalPricingCSVWithMapping(text, columnMap, unitOverrides = {}) {
+  const cleaned = (text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  let allRows = null
+  for (const delimiter of ['\t', ',', ';']) {
+    const result = Papa.parse(cleaned, { delimiter, header: false, skipEmptyLines: true })
+    if (result.data && result.data.length > 1 && result.data[0].length > 1) {
+      allRows = result.data
+      break
+    }
+  }
+  if (!allRows) {
+    const result = Papa.parse(cleaned, { header: false, skipEmptyLines: true })
+    allRows = result.data || []
+  }
+  if (!allRows.length) throw new Error('Historical pricing CSV appears empty.')
+
+  const cm = columnMap || {}
+  const dateIdx      = cm.serviceDate  ?? -1
+  const wtiIdx       = cm.wtiPrice     ?? -1
+  const hhIdx        = cm.henryHub     ?? -1
+  const mehIdx       = cm.mehPrice     ?? -1
+  const hscIdx       = cm.hscPrice     ?? -1
+  const mehBasisIdx  = cm.mehBasis     ?? -1
+  const hscBasisIdx  = cm.hscBasis     ?? -1
+
+  if (dateIdx < 0) throw new Error('Date column not mapped. Please assign a Date / Month column in the field mapper.')
+  if (wtiIdx < 0 && hhIdx < 0 && mehIdx < 0 && hscIdx < 0 && mehBasisIdx < 0 && hscBasisIdx < 0) {
+    throw new Error('No pricing columns mapped. Please assign at least one price column (WTI, Henry Hub, MEH, HSC, or basis).')
+  }
+
+  const out = []
+  const warnings = []
+  let skippedBadDate = 0
+
+  for (let i = 1; i < allRows.length; i++) {
+    const row = allRows[i] || []
+    if (!row.length) continue
+    const rowNumber = i + 1
+
+    const date = parsePricingDate(row[dateIdx])
+    if (!date) { skippedBadDate++; continue }
+
+    const wti          = wtiIdx      >= 0 ? parseNum(row[wtiIdx])      : null
+    const henryHub     = hhIdx       >= 0 ? parseNum(row[hhIdx])       : null
+    const mehProvided  = mehIdx      >= 0 ? parseNum(row[mehIdx])      : null
+    const hscProvided  = hscIdx      >= 0 ? parseNum(row[hscIdx])      : null
+    let   mehBasis     = mehBasisIdx >= 0 ? parseNum(row[mehBasisIdx]) : null
+    let   hscBasis     = hscBasisIdx >= 0 ? parseNum(row[hscBasisIdx]) : null
+
+    if (mehBasis == null && mehProvided != null && wti != null) mehBasis = mehProvided - wti
+    if (hscBasis == null && hscProvided != null && henryHub != null) hscBasis = hscProvided - henryHub
+
+    const mehImplied = (wti != null && mehBasis != null) ? (wti + mehBasis) : null
+    const hscImplied = (henryHub != null && hscBasis != null) ? (henryHub + hscBasis) : null
+    const meh = mehProvided != null ? mehProvided : mehImplied
+    const hsc = hscProvided != null ? hscProvided : hscImplied
+
+    const hasData = [wti, henryHub, meh, hsc, mehBasis, hscBasis].some(v => v != null)
+    if (!hasData) continue
+
+    out.push({
+      rowNumber,
+      date,
+      monthKey: monthKey(date),
+      monthDisp: monthDisp(date),
+      wti,
+      henryHub,
+      meh,
+      hsc,
+      mehProvided,
+      hscProvided,
+      mehBasis,
+      hscBasis,
+      mehImplied,
+      hscImplied,
+    })
+  }
+
+  out.sort((a, b) => a.date - b.date)
+  if (skippedBadDate > 0) warnings.push(`${skippedBadDate} row(s) skipped - invalid date in historical pricing file.`)
+  if (!out.length) throw new Error('No valid historical pricing rows found. Check that Date and price columns are correctly mapped.')
+
+  return { rows: out, warnings }
+}

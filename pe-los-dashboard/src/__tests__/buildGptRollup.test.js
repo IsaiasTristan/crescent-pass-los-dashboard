@@ -44,6 +44,6 @@ describe('buildGptRollup', () => {
     expect(out.byMeter['Birnbaum + Mitschke']).toHaveLength(1)
     expect(out.totalRollup).toHaveLength(1)
     expect(out.totalRollup[0].gptCostPerMcf).toBeCloseTo((180000 + 85000) / 150000)
-    expect(out.totalRollup[0].nglYield).toBeCloseTo((2500 + 1100) / 150000)
+    expect(out.totalRollup[0].nglYield).toBeCloseTo(((2500 + 1100) / 150000) * 1000)
   })
 })

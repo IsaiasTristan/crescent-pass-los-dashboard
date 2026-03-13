@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import { LOS_BUCKETS, COST_CAT_BUCKETS, LOS_IGNORE } from '../constants/losMapping.js'
+import { applyUnitConversion } from './autoMapper.js'
 
 // ─── Column index defaults (0-based) ─────────────────────────────────────────
 
@@ -420,4 +421,211 @@ export function parseCSVText(text) {
   return { rows: parsed, warnings, issues }
 }
 
+// ─── Mapping from canonical fieldRegistry IDs → internal col keys ─────────────
+const CANONICAL_TO_COL_KEY = {
+  wellName:     'WELL_NAME',
+  serviceDate:  'SERVICE_END_DATE',
+  costCategory: 'COST_CATEGORY',
+  losCategory:  'LOS_CATEGORY',
+  netAmount:    'NET_AMOUNT',
+  netVolume:    'NET_VOLUME',
+  grossAmount:  'GROSS_AMOUNT',
+  grossVolume:  'GROSS_VOLUME',
+  wi:           'WI',
+  nri:          'NRI',
+  propertyNum:  'PROPERTY_NUM',
+  propertyName: 'PROPERTY_NAME',
+  opObo:        'OP_OBO',
+  jpRp:         'JP_RP',
+}
 
+// Converts a DataSourceMapper columnMap ({ canonicalFieldId: colIndex }) to
+// the internal col object used by the parsing core.
+function buildColFromCanonicalMap(columnMap) {
+  const col = { ...COL_DEFAULTS }
+  for (const [fieldId, colIdx] of Object.entries(columnMap || {})) {
+    const colKey = CANONICAL_TO_COL_KEY[fieldId]
+    if (colKey !== undefined && colIdx != null && colIdx >= 0) {
+      col[colKey] = colIdx
+    }
+  }
+  return col
+}
+
+// Detects delimiter and parses to raw rows; returns { allRows, delimiter } or throws.
+function detectDelimiterAndParse(text) {
+  for (const delimiter of ['\t', ',', ';']) {
+    const result = Papa.parse(text, { delimiter, header: false, skipEmptyLines: true })
+    if (result.data && result.data.length && result.data[0].length > 3) {
+      return { allRows: result.data, delimiter }
+    }
+  }
+  const result = Papa.parse(text, { header: false, skipEmptyLines: true })
+  return { allRows: result.data || [], delimiter: ',' }
+}
+
+/**
+ * Parse LOS CSV text using a pre-confirmed column mapping from DataSourceMapper.
+ *
+ * @param {string} text - Raw CSV text.
+ * @param {{ [canonicalFieldId: string]: number }} columnMap - Field → column index.
+ * @param {{ [canonicalFieldId: string]: string }} unitOverrides - Field → unit key.
+ * @returns {{ rows: object[], warnings: string[], issues: object[] }}
+ */
+export function parseCSVWithMapping(text, columnMap, unitOverrides = {}) {
+  text = (text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const { allRows, delimiter } = detectDelimiterAndParse(text)
+
+  if (!allRows.length) throw new Error('CSV appears empty or could not be parsed.')
+
+  // The confirmed mapping was built from headers, so row 0 is always the header.
+  const col = buildColFromCanonicalMap(columnMap)
+  const start = 1
+  const minCols = Math.max(col.WELL_NAME, col.SERVICE_END_DATE, col.LOS_CATEGORY, col.NET_AMOUNT) + 1
+
+  const parsed = []
+  const warnings = []
+  const issues = []
+  let skippedShort = 0, skippedNoName = 0, skippedBadDate = 0
+  let badNetAmountCount = 0, badNetVolumeCount = 0
+
+  // Unit overrides for WI and NRI (percent → decimal)
+  const wiUnit  = unitOverrides.wi  || null
+  const nriUnit = unitOverrides.nri || null
+
+  for (let i = start; i < allRows.length; i++) {
+    const r = allRows[i]
+    const rowNumber = i + 1
+    if (isTrailingPaddingRow(r, col)) continue
+
+    if (!r || r.length < minCols) {
+      skippedShort++
+      issues.push({
+        rowNumber, issueType: 'short_row',
+        message: `Row has ${r ? r.length : 0} columns; expected at least ${minCols}.`,
+        wellName: '', serviceEndDate: '', costCategory: '', losCategory: '',
+        netVolumeRaw: '', netAmountRaw: '',
+      })
+      continue
+    }
+
+    const wellName          = (r[col.WELL_NAME]       || '').toString().trim()
+    const serviceEndDateRaw = (r[col.SERVICE_END_DATE] || '').toString().trim()
+    const los               = (r[col.LOS_CATEGORY]    || '').toString().trim()
+    const cat               = (r[col.COST_CATEGORY]   || '').toString().trim()
+    const netAmountRaw      = r[col.NET_AMOUNT]
+    const netVolumeRaw      = r[col.NET_VOLUME]
+
+    if (!wellName) {
+      skippedNoName++
+      issues.push({
+        rowNumber, issueType: 'missing_well_name',
+        message: 'Well Name is blank.',
+        wellName: '', serviceEndDate: serviceEndDateRaw, costCategory: cat, losCategory: los,
+        netVolumeRaw: netVolumeRaw == null ? '' : String(netVolumeRaw),
+        netAmountRaw: netAmountRaw == null ? '' : String(netAmountRaw),
+      })
+      continue
+    }
+
+    const date = parseDate(serviceEndDateRaw)
+    if (!date) {
+      skippedBadDate++
+      issues.push({
+        rowNumber, issueType: 'invalid_service_end_date',
+        message: `Invalid Service End Date "${serviceEndDateRaw}". Expected M/D/YY or M/D/YYYY.`,
+        wellName, serviceEndDate: serviceEndDateRaw, costCategory: cat, losCategory: los,
+        netVolumeRaw: netVolumeRaw == null ? '' : String(netVolumeRaw),
+        netAmountRaw: netAmountRaw == null ? '' : String(netAmountRaw),
+      })
+      continue
+    }
+
+    const netAmountParsed = parseNum(netAmountRaw)
+    const netVolumeParsed = parseNum(netVolumeRaw)
+
+    if (isNaN(netAmountParsed) && netAmountRaw != null && netAmountRaw !== '') {
+      badNetAmountCount++
+      issues.push({
+        rowNumber, issueType: 'non_numeric_net_amount',
+        message: `Non-numeric Net Amount "${String(netAmountRaw)}" was treated as 0.`,
+        wellName, serviceEndDate: serviceEndDateRaw, costCategory: cat, losCategory: los,
+        netVolumeRaw: netVolumeRaw == null ? '' : String(netVolumeRaw),
+        netAmountRaw: String(netAmountRaw),
+      })
+    }
+    if (isNaN(netVolumeParsed) && netVolumeRaw != null && netVolumeRaw !== '') {
+      badNetVolumeCount++
+      issues.push({
+        rowNumber, issueType: 'non_numeric_net_volume',
+        message: `Non-numeric Net Volume "${String(netVolumeRaw)}" was treated as 0.`,
+        wellName, serviceEndDate: serviceEndDateRaw, costCategory: cat, losCategory: los,
+        netVolumeRaw: String(netVolumeRaw),
+        netAmountRaw: netAmountRaw == null ? '' : String(netAmountRaw),
+      })
+    }
+
+    const bucket = resolveBucket(los, cat)
+    if (bucket === null && (los || cat)) {
+      issues.push({
+        rowNumber, issueType: 'unmapped_los_or_cost_category',
+        message: `No bucket mapping found for LOS "${los}" / Cost Category "${cat}". Row is excluded from rollups.`,
+        wellName, serviceEndDate: serviceEndDateRaw, costCategory: cat, losCategory: los,
+        netVolumeRaw: netVolumeRaw == null ? '' : String(netVolumeRaw),
+        netAmountRaw: netAmountRaw == null ? '' : String(netAmountRaw),
+      })
+    }
+
+    let wiRaw  = parseNumSafe(r[col.WI])
+    let nriRaw = parseNumSafe(r[col.NRI])
+    if (wiUnit)  wiRaw  = applyUnitConversion(wiRaw,  'decimal', wiUnit)  ?? wiRaw
+    if (nriUnit) nriRaw = applyUnitConversion(nriRaw, 'decimal', nriUnit) ?? nriRaw
+
+    parsed.push({
+      wellName, cat, los,
+      nri:         nriRaw,
+      wi:          wiRaw,
+      grossAmount: parseNumSafe(r[col.GROSS_AMOUNT]),
+      grossVolume: parseNumSafe(r[col.GROSS_VOLUME]),
+      jpRp:        (r[col.JP_RP]        || '').toString().trim(),
+      date,
+      monthKey:    monthKey(date),
+      monthDisp:   monthDisp(date),
+      propertyNum: (r[col.PROPERTY_NUM]  || '').toString().trim(),
+      propertyName:(r[col.PROPERTY_NAME] || '').toString().trim(),
+      opObo:       (r[col.OP_OBO]        || '').toString().trim(),
+      bucket,
+      netVolume:   isNaN(netVolumeParsed) ? 0 : netVolumeParsed,
+      netAmount:   isNaN(netAmountParsed) ? 0 : netAmountParsed,
+    })
+  }
+
+  if (!parsed.length) {
+    throw new Error(
+      `No valid rows found after mapping: ${skippedShort} short, ${skippedNoName} no well name, ${skippedBadDate} bad date. ` +
+      `Check that the correct columns were mapped in the field mapper.`
+    )
+  }
+
+  if (skippedBadDate > 0) {
+    warnings.push(`${skippedBadDate} row(s) skipped - invalid Service End Date.`)
+  }
+  if (badNetAmountCount > 0) warnings.push(`${badNetAmountCount} row(s) had non-numeric Net Amount values - treated as 0.`)
+  if (badNetVolumeCount > 0) warnings.push(`${badNetVolumeCount} row(s) had non-numeric Net Volume values - treated as 0.`)
+
+  const unmappedCats = new Set(
+    issues
+      .filter(i => i.issueType === 'unmapped_los_or_cost_category')
+      .map(i => i.losCategory || i.costCategory)
+      .filter(Boolean)
+  )
+  if (unmappedCats.size > 0) {
+    warnings.push(
+      `${unmappedCats.size} LOS/cost category label(s) have no bucket mapping and will be excluded from rollups: ` +
+      [...unmappedCats].slice(0, 5).map(c => `"${c}"`).join(', ') +
+      (unmappedCats.size > 5 ? ` ... and ${unmappedCats.size - 5} more.` : '.')
+    )
+  }
+
+  return { rows: parsed, warnings, issues }
+}

@@ -13,7 +13,7 @@ describe('computeGptOutputs', () => {
       nglRealizedPrice: 30,
       totalMidstreamFee: 180000,
     })
-    expect(out.nglYield).toBeCloseTo(0.025)
+    expect(out.nglYield).toBeCloseTo(25)
     expect(out.gasShrinkPct).toBeCloseTo(4.2)
     expect(out.btuFactor).toBeCloseTo(1.08)
     expect(out.gasDiff).toBeCloseTo(-0.35)

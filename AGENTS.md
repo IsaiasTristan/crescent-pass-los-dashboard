@@ -51,8 +51,13 @@ _(None at this time.)_
   - `src/constants/losMapping.js` — LOS_BUCKETS, COST_CAT_BUCKETS, CHART_COLORS, ARIES state shape, TABS
   - `src/constants/gptMapping.js` — canonical midstream GPT column aliases
   - `src/constants/wbwTypes.js` — WBW_TYPES, SORT_OPTIONS
-  - `src/ingest/parseCsv.js` — parseCSVText (returns `{ rows, warnings }`), parseDate, parseNum, resolveBucket
-  - `src/ingest/parseMidstreamGptCsv.js` — parseMidstreamGptCSVText for variable-format GPT statements
+  - `src/constants/fieldRegistry.js` — canonical schema: FIELD_REGISTRY, FIELD_ALIASES, SOURCE_TYPE_SIGNALS, UNIT_CHOICES, DATA_SOURCES
+  - `src/ingest/autoMapper.js` — autoMapColumns (alias + fuzzy/Levenshtein matching), detectSourceType, applyUnitConversion, reverseColumnMap
+  - `src/components/DataSourceMapper.jsx` — interactive mapping UI (confidence indicators, source type selector, unit dropdowns, Confirm & Load)
+  - `src/ingest/parseCsv.js` — parseCSVText / parseCSVWithMapping (returns `{ rows, warnings }`), parseDate, parseNum, resolveBucket
+  - `src/ingest/parseMidstreamGptCsv.js` — parseMidstreamGptCSVText / parseMidstreamGptCSVWithMapping for variable-format GPT statements
+  - `src/ingest/parseHistoricalVolumesCsv.js` — parseHistoricalVolumesCSVText / parseHistoricalVolumesCSVWithMapping
+  - `src/ingest/parseHistoricalPricingCsv.js` — parseHistoricalPricingCSVText / parseHistoricalPricingCSVWithMapping
   - `src/domain/metrics.js` — GAS_BOE, sd, daysInMonth, emptyM, accum, metrics
   - `src/domain/gptFormulas.js` — centralized GPT formulas (NGL yield, shrink, BTU, gas diff, NGL %WTI, GPT $/Mcf)
   - `src/selectors/buildRollups.js` — buildMonthlyRollup, buildWellData, buildLOSCatData, filterRows, selectActiveInputs
@@ -105,6 +110,8 @@ Agents implement features and fixes per `ProjectBrief.md`, keep this file and `P
 
 ## Sync instruction
 
-Current implementation note: the Vite app supports separate historical uploads for pricing, gross volumes, and midstream GPT statements. Matching is done by normalized Well Name / Applicable Tag / Property Name for gross-volume files. Current global unit-cost formulas are: oil = gross oil cost / gross oil volume; workover = gross workover cost / monthly well count; fixed = gross fixed cost / monthly well count; JP and RP fixed/workover use their own rolling JP/RP well counts; water = gross water cost / gross water volume; GP&T = gross GPT cost / gross gas volume. When GPT statement data is uploaded, operated rollups use GPT-derived `gptPerMcf`, `gasDifferential`, and `nglDifferential`; OBO continues to use LOS-derived values. Status freshness check (2026-03-11): `node --version` = `v24.14.0`, `npm --version` = `11.9.0`, `npm test` passing (`113` tests).
+Current implementation note: the Vite app now includes a **Dynamic Field Mapping Layer** for all CSV upload flows (LOS, historical pricing, historical gross volumes, midstream GPT). The `DataSourceMapper` UI intercepts each file upload, auto-proposes column-to-canonical-field mappings using `autoMapColumns` (exact alias → substring → Levenshtein fuzzy), lets the user confirm/override, then calls the appropriate `*WithMapping` parser. Each ingest module retains a backward-compatible `*CSVText` wrapper. The canonical schema lives in `src/constants/fieldRegistry.js`; matching logic in `src/ingest/autoMapper.js`.
+
+**NGL component framework (GPT statements):** `fieldRegistry.js` exports `NGL_COMPONENTS` (ethane/C2 through hexanes+/C6+). For each component, four user-mappable fields: `{comp}TheoreticalGal`, `{comp}AllocatedGal`, `{comp}ContractPct`, `{comp}Price`. Parser derives per-row: `recoveryPct = allocatedGal / theoreticalGal`, `popGal = allocatedGal × contractPct%` (after-POP gallons), `productValue = popGal × price`. `buildGptRollup` aggregates to produce `galPerMcf`, `pctOfNgl`, `nglTotalGal/Bbl`. GptTab renders NGL Volume Build (waterfall) and NGL Composition tables when component data is present. GP&T $/Mcf is now `gptPerMcfResidueGas = (gatheringFee + treatingFee) / residueGasVolumeMcf` (per user spec); `gptCostPerMcf` (total fees / inlet) is also retained. Status freshness check (2026-03-09): `npm test` passing (`145` tests).
 
 When you change Cursor rules (e.g. in `.cursor/rules/`) or update `ProjectBrief.md`, update this file so terminal and other agents keep the same guidance. Do not add or remove rules here; mirror only.

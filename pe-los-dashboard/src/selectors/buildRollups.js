@@ -226,48 +226,10 @@ export function attachPricingDifferentials(monthlyRollup, wellData, pricingRows)
   }
 }
 
-// Apply GPT-statement-derived assumptions to operated monthly rollups.
-// OBO and Total slices keep LOS-derived values by design.
-export function attachGptToRollup(monthlyRollup, gptTotalRollup, opFilter) {
-  if (!monthlyRollup?.length || !gptTotalRollup?.length || opFilter !== 'op') {
-    return monthlyRollup || []
-  }
-
-  const byMonth = Object.fromEntries(
-    gptTotalRollup
-      .filter(row => row?.monthKey)
-      .map(row => [row.monthKey, row])
-  )
-
-  return monthlyRollup.map(month => {
-    const gpt = byMonth[month.monthKey]
-    if (!gpt) return month
-
-    const gptPerMcf = (gpt.gptCostPerMcf != null && isFinite(gpt.gptCostPerMcf))
-      ? Number(gpt.gptCostPerMcf)
-      : month.gptPerMcf
-    const gasDifferential = (gpt.gasDiff != null && isFinite(gpt.gasDiff))
-      ? Number(gpt.gasDiff)
-      : month.gasDifferential
-    const nglRatio = (gpt.nglPricePctWti != null && isFinite(gpt.nglPricePctWti))
-      ? Number(gpt.nglPricePctWti) / 100
-      : month.nglDifferential
-
-    return {
-      ...month,
-      gptPerMcf,
-      gasDifferential,
-      nglDifferential: nglRatio,
-      gasDiff: gasDifferential,
-      nglDiffPct: nglRatio != null ? nglRatio * 100 : null,
-      // keep raw percent for table/auditability
-      gptNglPricePctWti: gpt.nglPricePctWti,
-      gptGasShrinkPct: gpt.gasShrinkPct,
-      gptBtuFactor: gpt.btuFactor,
-      gptNglYield: gpt.nglYield,
-      gptCostPerMcf: gpt.gptCostPerMcf,
-    }
-  })
+// GPT statement metrics are currently view-only (GPT tab) and do not flow into
+// LOS rollups. Keep this passthrough to preserve the existing call sites.
+export function attachGptToRollup(monthlyRollup, _gptTotalRollup, _opFilter) {
+  return monthlyRollup || []
 }
 
 function normalizeIdentifier(value) {
@@ -418,4 +380,41 @@ export function attachHistoricalVolumes(monthlyRollup, wellData, volumeRows, opF
   }
 
   return { monthlyRollup: rollupOut, wellData: wellOut, warnings, histGrossWaterByMonth }
+}
+
+// ─── GPT statement raw overlay ───────────────────────────────────────────────
+// attachGptData: joins raw GPT statement rows (from parseMidstreamGptCsv) to the
+// monthly rollup by aggregating fee and inlet volume internally.
+// This helper is currently not used by the main rollup pipeline.
+
+export function attachGptData(monthlyRollup, gptRows) {
+  if (!gptRows || !gptRows.length) {
+    return (monthlyRollup || []).map(m => ({
+      ...m,
+      gptStatementFee: null,
+      gptStatementFeePerMcf: null,
+      gptStatementInletMcf: null,
+    }))
+  }
+
+  const byMonth = {}
+  for (const row of gptRows) {
+    if (!row?.monthKey) continue
+    if (!byMonth[row.monthKey]) byMonth[row.monthKey] = { fee: 0, inletMcf: 0 }
+    if (row.totalMidstreamFee != null && isFinite(row.totalMidstreamFee)) {
+      byMonth[row.monthKey].fee += row.totalMidstreamFee
+    }
+    if (row.inletVolumeMcf != null && isFinite(row.inletVolumeMcf)) {
+      byMonth[row.monthKey].inletMcf += row.inletVolumeMcf
+    }
+  }
+
+  return (monthlyRollup || []).map(m => {
+    const gpt = byMonth[m.monthKey]
+    if (!gpt) return { ...m, gptStatementFee: null, gptStatementFeePerMcf: null, gptStatementInletMcf: null }
+    const fee    = gpt.fee > 0 ? gpt.fee : null
+    const inlet  = gpt.inletMcf > 0 ? gpt.inletMcf : null
+    const perMcf = fee != null && inlet != null ? fee / inlet : null
+    return { ...m, gptStatementFee: fee, gptStatementFeePerMcf: perMcf, gptStatementInletMcf: inlet }
+  })
 }

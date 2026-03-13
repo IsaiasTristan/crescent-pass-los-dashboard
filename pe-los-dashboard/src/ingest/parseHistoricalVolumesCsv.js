@@ -1,5 +1,6 @@
 import Papa from 'papaparse'
 import { monthKey, monthDisp, parseDate } from './parseCsv.js'
+import { applyUnitConversion } from './autoMapper.js'
 
 function normalizeHeader(value) {
   return (value || '')
@@ -180,6 +181,105 @@ export function parseHistoricalVolumesCSVText(text) {
   if (skippedBadDate > 0) warnings.push(`${skippedBadDate} row(s) skipped - invalid date in historical gross-volume file.`)
   if (skippedNoIdentifier > 0) warnings.push(`${skippedNoIdentifier} row(s) skipped - missing Well Name / Applicable Tag.`)
   if (!out.length) throw new Error('No valid historical gross-volume rows found after parsing.')
+
+  return { rows: out, warnings }
+}
+
+/**
+ * Parse historical gross-volume CSV using a pre-confirmed column mapping from DataSourceMapper.
+ *
+ * @param {string} text - Raw CSV text.
+ * @param {{ [canonicalFieldId: string]: number }} columnMap
+ * @param {{ [canonicalFieldId: string]: string }} unitOverrides
+ * @returns {{ rows: object[], warnings: string[] }}
+ */
+export function parseHistoricalVolumesCSVWithMapping(text, columnMap, unitOverrides = {}) {
+  const cleaned = (text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  let allRows = null
+  for (const delimiter of ['\t', ',', ';']) {
+    const result = Papa.parse(cleaned, { delimiter, header: false, skipEmptyLines: true })
+    if (result.data && result.data.length > 1 && result.data[0].length > 2) {
+      allRows = result.data
+      break
+    }
+  }
+  if (!allRows) {
+    const result = Papa.parse(cleaned, { header: false, skipEmptyLines: true })
+    allRows = result.data || []
+  }
+  if (!allRows.length) throw new Error('Historical gross-volume CSV appears empty.')
+
+  const cm = columnMap || {}
+  const indices = {
+    dateIdx:          cm.serviceDate       ?? -1,
+    wellNameIdx:      cm.wellName          ?? -1,
+    applicableTagIdx: cm.propertyNum       ?? -1,
+    propertyNameIdx:  cm.propertyName      ?? -1,
+    opStatusIdx:      cm.opStatus          ?? -1,
+    grossOilIdx:      cm.grossOilVolume    ?? -1,
+    grossGasIdx:      cm.grossGasVolume    ?? -1,
+    grossNglIdx:      cm.grossNGLVolume    ?? -1,
+    grossWaterIdx:    cm.grossWaterVolume  ?? -1,
+  }
+
+  const oilUnit   = unitOverrides.grossOilVolume   || null
+  const gasUnit   = unitOverrides.grossGasVolume   || null
+  const nglUnit   = unitOverrides.grossNGLVolume   || null
+  const waterUnit = unitOverrides.grossWaterVolume || null
+
+  const out = []
+  const warnings = []
+  let skippedBadDate = 0
+  let skippedNoIdentifier = 0
+
+  for (let i = 1; i < allRows.length; i++) {
+    const row = allRows[i] || []
+    if (!row.length) continue
+
+    if (indices.dateIdx < 0) { skippedBadDate++; continue }
+    const date = parseVolumeDate(row[indices.dateIdx])
+    if (!date) { skippedBadDate++; continue }
+
+    const wellName      = indices.wellNameIdx      >= 0 ? (row[indices.wellNameIdx]      || '').toString().trim() : ''
+    const applicableTag = indices.applicableTagIdx >= 0 ? (row[indices.applicableTagIdx] || '').toString().trim() : ''
+    const propertyName  = indices.propertyNameIdx  >= 0 ? (row[indices.propertyNameIdx]  || '').toString().trim() : ''
+    const opStatus      = indices.opStatusIdx      >= 0 ? normalizeOpStatus(row[indices.opStatusIdx]) : ''
+
+    if (!wellName && !applicableTag && !propertyName) { skippedNoIdentifier++; continue }
+
+    let grossOilVolume   = indices.grossOilIdx   >= 0 ? parseNum(row[indices.grossOilIdx])   : null
+    let grossGasVolume   = indices.grossGasIdx   >= 0 ? parseNum(row[indices.grossGasIdx])   : null
+    let grossNGLVolume   = indices.grossNglIdx   >= 0 ? parseNum(row[indices.grossNglIdx])   : null
+    let grossWaterVolume = indices.grossWaterIdx >= 0 ? parseNum(row[indices.grossWaterIdx]) : null
+
+    grossOilVolume   = applyUnitConversion(grossOilVolume,   'BBL', oilUnit)   ?? grossOilVolume
+    grossGasVolume   = applyUnitConversion(grossGasVolume,   'MCF', gasUnit)   ?? grossGasVolume
+    grossNGLVolume   = applyUnitConversion(grossNGLVolume,   'BBL', nglUnit)   ?? grossNGLVolume
+    grossWaterVolume = applyUnitConversion(grossWaterVolume, 'BBL', waterUnit) ?? grossWaterVolume
+
+    const hasData = [grossOilVolume, grossGasVolume, grossNGLVolume, grossWaterVolume].some(v => v != null)
+    if (!hasData) continue
+
+    out.push({
+      rowNumber: i + 1,
+      date,
+      monthKey: monthKey(date),
+      monthDisp: monthDisp(date),
+      wellName,
+      applicableTag,
+      propertyName,
+      opStatus,
+      grossOilVolume,
+      grossGasVolume,
+      grossNGLVolume,
+      grossWaterVolume,
+    })
+  }
+
+  out.sort((a, b) => a.date - b.date || a.rowNumber - b.rowNumber)
+  if (skippedBadDate > 0) warnings.push(`${skippedBadDate} row(s) skipped - invalid date in historical gross-volume file.`)
+  if (skippedNoIdentifier > 0) warnings.push(`${skippedNoIdentifier} row(s) skipped - missing Well Name / Applicable Tag.`)
+  if (!out.length) throw new Error('No valid historical gross-volume rows found. Check that Date and identifier columns are correctly mapped.')
 
   return { rows: out, warnings }
 }
