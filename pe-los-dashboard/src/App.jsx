@@ -1736,6 +1736,7 @@ function App() {
                 pendingGptFile={pendingGptFile}
                 setPendingGptFile={setPendingGptFile}
                 pricingRows={pricingRows}
+                volumeRows={volumeRows}
               />
             </div>
             <div style={{ display: tab === 'historicalpricing' ? 'block' : 'none' }}>

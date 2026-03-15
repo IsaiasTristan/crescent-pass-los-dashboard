@@ -5,6 +5,10 @@ function normalizeMeterName(value) {
   return (value || '').toString().trim() || 'Unknown Meter'
 }
 
+function normalizeMeterKey(value) {
+  return (value || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
 function toNum(value) {
   return (value != null && isFinite(value)) ? Number(value) : null
 }
@@ -115,8 +119,12 @@ function addRaw(agg, row) {
   }
 }
 
-function finalizeAgg(agg) {
+function finalizeAgg(agg, options = {}) {
   const weighted = (num, den) => (den > 0 ? num / den : null)
+  const meterKey = normalizeMeterKey(agg.meterName)
+  const historicalWellheadGasMcf = agg.meterName === 'Total'
+    ? (options.totalWellheadGasByMonth?.[agg.monthKey] ?? null)
+    : (options.wellheadGasByMeterMonth?.[meterKey]?.[agg.monthKey] ?? null)
 
   // Compute NGL component totals and composition
   const totalNglGal = NGL_COMPONENTS.reduce((s, c) => s + (agg.nglComponents[c.id]?.popGal || 0), 0)
@@ -165,6 +173,7 @@ function finalizeAgg(agg) {
     nglRealizedPrice:    weighted(agg.nglRealizedPriceWeightedNumerator, agg.nglRealizedPriceWeight),
     nglSales:            agg.nglSales !== 0 ? agg.nglSales : null,
     nglDifferentialPct:  weighted(agg.nglDifferentialPctWeightedNumerator, agg.nglDifferentialPctWeight),
+    historicalWellheadGasMcf,
     totalMidstreamFee:   agg.totalMidstreamFee  !== 0 ? agg.totalMidstreamFee  : null,
     gatheringFee:        agg.gatheringFee       !== 0 ? agg.gatheringFee       : null,
     processingFee:       agg.processingFee      !== 0 ? agg.processingFee      : null,
@@ -180,12 +189,13 @@ function finalizeAgg(agg) {
     meterName:  agg.meterName,
     ...formulaInput,
     ...outputs,
+    historicalWellheadGasMcf,
     nglTotalGal:       nglTotalGalFinal,
     nglComponents,
   }
 }
 
-export function buildGptRollup(rows) {
+export function buildGptRollup(rows, options = {}) {
   const byMeterMonth = {}
   const totalByMonth = {}
 
@@ -207,7 +217,7 @@ export function buildGptRollup(rows) {
 
   const byMeter = {}
   Object.values(byMeterMonth).forEach(agg => {
-    const result = finalizeAgg(agg)
+    const result = finalizeAgg(agg, options)
     if (!byMeter[result.meterName]) byMeter[result.meterName] = []
     byMeter[result.meterName].push(result)
   })
@@ -217,7 +227,7 @@ export function buildGptRollup(rows) {
 
   const meters = Object.keys(byMeter).sort((a, b) => a.localeCompare(b))
   const totalRollup = Object.values(totalByMonth)
-    .map(finalizeAgg)
+    .map(agg => finalizeAgg(agg, options))
     .sort((a, b) => a.monthKey.localeCompare(b.monthKey))
 
   return { byMeter, totalRollup, meters }

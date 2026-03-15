@@ -38,12 +38,20 @@ describe('buildGptRollup', () => {
       },
     ]
 
-    const out = buildGptRollup(rows)
+    const out = buildGptRollup(rows, {
+      wellheadGasByMeterMonth: {
+        rangelbehrens: { '2025-01': 100000 },
+        birnbaummitschke: { '2025-01': 60000 },
+      },
+      totalWellheadGasByMonth: { '2025-01': 160000 },
+    })
     expect(out.meters).toEqual(['Birnbaum + Mitschke', 'Rangel Behrens'])
     expect(out.byMeter['Rangel Behrens']).toHaveLength(1)
     expect(out.byMeter['Birnbaum + Mitschke']).toHaveLength(1)
     expect(out.totalRollup).toHaveLength(1)
     expect(out.totalRollup[0].gptCostPerMcf).toBeCloseTo((180000 + 85000) / 150000)
     expect(out.totalRollup[0].nglYield).toBeCloseTo(((2500 + 1100) / 150000) * 1000)
+    expect(out.totalRollup[0].gasShrinkPct).toBeCloseTo(((95000 + 47000) / 160000) * 100)
+    expect(out.byMeter['Rangel Behrens'][0].gasShrinkPct).toBeCloseTo((95000 / 100000) * 100)
   })
 })

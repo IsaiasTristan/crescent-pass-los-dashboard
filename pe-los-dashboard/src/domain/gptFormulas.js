@@ -20,13 +20,23 @@ export const GPT_FORMULAS = {
     return sd(nglVolumeBbl, inletVolumeMcf) * 1000
   },
 
-  // Gas Shrink (%) — use provided % or derive from shrink volume / inlet.
+  // Gas Shrink Bridge (%) — primary formula for this project:
+  // (Post-POP residue gas MCF / historical wellhead gas MCF) × 100.
+  // Falls back to legacy shrink inputs only when historical wellhead volume is absent.
   gasShrinkPct(input) {
-    const shrinkPct = num(input.gasShrinkPct)
-    if (shrinkPct != null) {
-      // If a fraction is provided (0-1), normalize to percent.
-      return shrinkPct <= 1 ? shrinkPct * 100 : shrinkPct
+    const residueGasVolumeMcf = num(input.residueGasVolumeMcf)
+    const historicalWellheadGasMcf = num(input.historicalWellheadGasMcf)
+    if (
+      residueGasVolumeMcf != null &&
+      historicalWellheadGasMcf != null &&
+      historicalWellheadGasMcf > 0
+    ) {
+      return sd(residueGasVolumeMcf, historicalWellheadGasMcf) * 100
     }
+
+    const shrinkPct = num(input.gasShrinkPct)
+    if (shrinkPct != null) return shrinkPct <= 1 ? shrinkPct * 100 : shrinkPct
+
     const gasShrinkMcf = num(input.gasShrinkMcf)
     const inletVolumeMcf = num(input.inletVolumeMcf)
     if (gasShrinkMcf == null || inletVolumeMcf == null || inletVolumeMcf <= 0) return null

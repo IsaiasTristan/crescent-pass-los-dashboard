@@ -43,6 +43,18 @@ function buildAliasLookup(sourceTypeId) {
   return lookup
 }
 
+function inferGasUnitFromHeader(rawLabel) {
+  const text = (rawLabel || '').toString().trim().toLowerCase()
+  if (!text) return null
+  // Prefer explicit unit tokens if present.
+  if (/(^|[^a-z0-9])mmbtu(s)?([^a-z0-9]|$)/.test(text)) return 'MMBTU'
+  if (/(^|[^a-z0-9])mmcf([^a-z0-9]|$)/.test(text)) return 'MCF'
+  if (/(^|[^a-z0-9])mcf([^a-z0-9]|$)/.test(text)) return 'MCF'
+  if (/(^|[^a-z0-9])cf([^a-z0-9]|$)/.test(text)) return 'CF'
+  // Project convention: gas columns without an explicit unit are usually MMBtu.
+  return 'MMBTU'
+}
+
 // Returns the canonical field ID and confidence for a single normalized header.
 // confidence: 'exact' | 'high' | 'low' | null
 function matchHeader(norm, lookup) {
@@ -112,6 +124,10 @@ export function autoMapColumns(rawHeaders, sampleRows, sourceTypeId) {
 
     const { canonicalFieldId, confidence } = matchHeader(norm, lookup)
     const field = canonicalFieldId ? FIELD_REGISTRY[canonicalFieldId] : null
+    let suggestedUnit = field?.canonicalUnit ?? null
+    if (field?.canonicalUnit === 'MCF') {
+      suggestedUnit = inferGasUnitFromHeader(rawLabel)
+    }
 
     return {
       headerIdx,
@@ -119,7 +135,7 @@ export function autoMapColumns(rawHeaders, sampleRows, sourceTypeId) {
       sampleValues: samples,
       canonicalFieldId,
       confidence,
-      suggestedUnit: field?.canonicalUnit ?? null,
+      suggestedUnit,
     }
   })
 }

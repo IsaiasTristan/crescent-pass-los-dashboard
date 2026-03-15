@@ -117,6 +117,20 @@ describe('autoMapColumns', () => {
     expect(byLabel['Meter Name']).toBe('meterName')
     expect(byLabel['Total Midstream Fee']).toBe('totalMidstreamFee')
   })
+
+  it('infers gas unit from explicit header unit suffix', () => {
+    const [volumeCol] = autoMapColumns(['Gross Gas Volume (MCF)'], [], 'volumes')
+    const [gptCol] = autoMapColumns(['Inlet Volume (MMBTU)'], [], 'gpt')
+    expect(volumeCol.suggestedUnit).toBe('MCF')
+    expect(gptCol.suggestedUnit).toBe('MMBTU')
+  })
+
+  it('defaults gas unit suggestion to MMBTU when header omits unit', () => {
+    const headers = ['Gross Gas Volume']
+    const [m] = autoMapColumns(headers, [], 'volumes')
+    expect(m.canonicalFieldId).toBe('grossGasVolume')
+    expect(m.suggestedUnit).toBe('MMBTU')
+  })
 })
 
 // ─── applyUnitConversion ──────────────────────────────────────────────────────

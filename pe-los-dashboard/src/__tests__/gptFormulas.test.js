@@ -6,7 +6,8 @@ describe('computeGptOutputs', () => {
     const out = computeGptOutputs({
       inletVolumeMcf: 100000,
       nglVolumeBbl: 2500,
-      gasShrinkPct: 4.2,
+      residueGasVolumeMcf: 84200,
+      historicalWellheadGasMcf: 100000,
       btuFactor: 1.08,
       gasDifferential: -0.35,
       wtiPrice: 75,
@@ -14,14 +15,22 @@ describe('computeGptOutputs', () => {
       totalMidstreamFee: 180000,
     })
     expect(out.nglYield).toBeCloseTo(25)
-    expect(out.gasShrinkPct).toBeCloseTo(4.2)
+    expect(out.gasShrinkPct).toBeCloseTo(84.2)
     expect(out.btuFactor).toBeCloseTo(1.08)
     expect(out.gasDiff).toBeCloseTo(-0.35)
     expect(out.nglPricePctWti).toBeCloseTo(40)
     expect(out.gptCostPerMcf).toBeCloseTo(1.8)
   })
 
-  it('derives shrink percent when pct is missing', () => {
+  it('derives shrink bridge percent from residue vs historical wellhead', () => {
+    const out = computeGptOutputs({
+      residueGasVolumeMcf: 76000,
+      historicalWellheadGasMcf: 100000,
+    })
+    expect(out.gasShrinkPct).toBeCloseTo(76)
+  })
+
+  it('falls back to shrink volume / inlet when historical wellhead is missing', () => {
     const out = computeGptOutputs({
       inletVolumeMcf: 20000,
       gasShrinkMcf: 1200,

@@ -98,6 +98,14 @@ export const FIELD_REGISTRY = {
     sources: ['los', 'volumes', 'gpt'],
     required: {},
   },
+  meterTag: {
+    label: 'Meter Tag',
+    type: 'string',
+    canonicalUnit: null,
+    unitChoices: null,
+    sources: ['volumes'],
+    required: {},
+  },
   opStatus: {
     label: 'Op Status',
     type: 'string',
@@ -538,6 +546,10 @@ export const FIELD_ALIASES = {
   propertyName: [
     'property name', 'lease', 'property', 'lease name', 'lease/well', 'field',
     'unit name', 'unit', 'producing entity',
+  ],
+  meterTag: [
+    'meter tag', 'meter', 'meter name', 'plant', 'plant name',
+    'delivery point', 'meter/plant',
   ],
   opStatus: [
     'op status', 'operation status', 'operated', 'operator status', 'op/non-op',

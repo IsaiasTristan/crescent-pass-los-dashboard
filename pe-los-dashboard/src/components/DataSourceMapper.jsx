@@ -14,7 +14,7 @@ const SOURCE_FIELD_GROUPS = {
     { label: 'LOS Data',  fields: ['costCategory', 'losCategory', 'netAmount', 'netVolume', 'grossAmount', 'grossVolume', 'wi', 'nri'] },
   ],
   volumes: [
-    { label: 'Identity',    fields: ['wellName', 'propertyNum', 'propertyName', 'serviceDate'] },
+    { label: 'Identity',    fields: ['wellName', 'propertyNum', 'propertyName', 'meterTag', 'serviceDate'] },
     { label: 'Production',  fields: ['grossOilVolume', 'grossGasVolume', 'grossNGLVolume', 'grossWaterVolume', 'wi', 'nri'] },
   ],
   pricing: [
@@ -24,7 +24,7 @@ const SOURCE_FIELD_GROUPS = {
   ],
   gpt: [
     { label: 'Identity',       fields: ['serviceDate', 'meterName'] },
-    { label: 'Gas Volumes',    fields: ['inletVolumeMcf', 'inletVolumeMmBtu', 'fieldFuelMcf', 'fieldFuelMmBtu', 'netDeliveredMcf', 'netDeliveredMmBtu', 'totalShrinkMmBtu', 'plantFuelLossMmBtu', 'gasShrinkPct', 'gasShrinkMcf', 'btuFactor'] },
+    { label: 'Gas Volumes',    fields: ['inletVolumeMcf', 'inletVolumeMmBtu', 'fieldFuelMcf', 'fieldFuelMmBtu', 'netDeliveredMcf', 'netDeliveredMmBtu', 'totalShrinkMmBtu', 'plantFuelLossMmBtu', 'gasShrinkMcf', 'btuFactor'] },
     { label: 'Residue Gas',    fields: ['settlementResidueMmBtu', 'globalContractPct', 'settlementResWithContract', 'residuePricePerMmBtu', 'residueGasVolumeMcf', 'residueGasSales'] },
     { label: 'NGL Totals',     fields: ['nglVolumeBbl', 'nglYield', 'nglSales', 'nglRealizedPrice', 'nglDifferentialPct', 'wtiPrice'] },
     { label: 'Midstream Fees', fields: ['fee1Label', 'fee1Amount', 'fee2Label', 'fee2Amount', 'fee3Label', 'fee3Amount', 'fee4Label', 'fee4Amount'] },

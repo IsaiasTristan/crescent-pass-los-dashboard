@@ -87,6 +87,7 @@ function tryParseWithDelimiter(text, delimiter) {
     'pt prop num', 'pt prop #', 'pt property num', 'pt property #',
   ])
   const propertyNameIdx = findIndex(headerIndex, ['property name', 'property', 'lease'])
+  const meterTagIdx = findIndex(headerIndex, ['meter tag', 'meter', 'meter name', 'plant', 'plant name', 'delivery point'])
   const opStatusIdx = findIndex(headerIndex, ['op status', 'opstatus', 'op/obo', 'status'])
   const grossOilIdx = findIndex(headerIndex, ['gross oil', 'gross oil volume', 'oil gross', 'oil volume'])
   const grossGasIdx = findIndex(headerIndex, ['gross gas', 'gross gas volume', 'gas gross', 'gas volume'])
@@ -104,6 +105,7 @@ function tryParseWithDelimiter(text, delimiter) {
       wellNameIdx,
       applicableTagIdx,
       propertyNameIdx,
+      meterTagIdx,
       opStatusIdx,
       grossOilIdx,
       grossGasIdx,
@@ -148,6 +150,7 @@ export function parseHistoricalVolumesCSVText(text) {
     const wellName = indices.wellNameIdx >= 0 ? (row[indices.wellNameIdx] || '').toString().trim() : ''
     const applicableTag = indices.applicableTagIdx >= 0 ? (row[indices.applicableTagIdx] || '').toString().trim() : ''
     const propertyName = indices.propertyNameIdx >= 0 ? (row[indices.propertyNameIdx] || '').toString().trim() : ''
+    const meterTag = indices.meterTagIdx >= 0 ? (row[indices.meterTagIdx] || '').toString().trim() : ''
     const opStatus = indices.opStatusIdx >= 0 ? normalizeOpStatus(row[indices.opStatusIdx]) : ''
     if (!wellName && !applicableTag && !propertyName) {
       skippedNoIdentifier++
@@ -169,6 +172,7 @@ export function parseHistoricalVolumesCSVText(text) {
       wellName,
       applicableTag,
       propertyName,
+      meterTag,
       opStatus,
       grossOilVolume,
       grossGasVolume,
@@ -215,6 +219,7 @@ export function parseHistoricalVolumesCSVWithMapping(text, columnMap, unitOverri
     wellNameIdx:      cm.wellName          ?? -1,
     applicableTagIdx: cm.propertyNum       ?? -1,
     propertyNameIdx:  cm.propertyName      ?? -1,
+    meterTagIdx:      cm.meterTag          ?? -1,
     opStatusIdx:      cm.opStatus          ?? -1,
     grossOilIdx:      cm.grossOilVolume    ?? -1,
     grossGasIdx:      cm.grossGasVolume    ?? -1,
@@ -243,6 +248,7 @@ export function parseHistoricalVolumesCSVWithMapping(text, columnMap, unitOverri
     const wellName      = indices.wellNameIdx      >= 0 ? (row[indices.wellNameIdx]      || '').toString().trim() : ''
     const applicableTag = indices.applicableTagIdx >= 0 ? (row[indices.applicableTagIdx] || '').toString().trim() : ''
     const propertyName  = indices.propertyNameIdx  >= 0 ? (row[indices.propertyNameIdx]  || '').toString().trim() : ''
+    const meterTag      = indices.meterTagIdx      >= 0 ? (row[indices.meterTagIdx]      || '').toString().trim() : ''
     const opStatus      = indices.opStatusIdx      >= 0 ? normalizeOpStatus(row[indices.opStatusIdx]) : ''
 
     if (!wellName && !applicableTag && !propertyName) { skippedNoIdentifier++; continue }
@@ -268,6 +274,7 @@ export function parseHistoricalVolumesCSVWithMapping(text, columnMap, unitOverri
       wellName,
       applicableTag,
       propertyName,
+      meterTag,
       opStatus,
       grossOilVolume,
       grossGasVolume,

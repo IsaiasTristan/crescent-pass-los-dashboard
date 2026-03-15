@@ -39,6 +39,10 @@ function pickHistoricalGasPrice(pricingRow) {
   return null
 }
 
+function normalizeMeterKey(value) {
+  return (value || '').toString().trim().toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
 function MetricTable({ title, rows }) {
   const showCompYield       = rows.some(r => r.nglYieldFromComponents != null)
   const showGptResidueGas   = rows.some(r => r.gptPerMcfResidueGas != null)
@@ -350,6 +354,7 @@ export function GptTab({
   pendingGptFile = null,
   setPendingGptFile,
   pricingRows = [],
+  volumeRows = [],
 }) {
   const [loading, setLoading] = useState(false)
 
@@ -379,7 +384,42 @@ export function GptTab({
     }, 50)
   }, [setGptRows, setGptWarnings, setGptError, setGptFilename])
 
-  const rollup = useMemo(() => buildGptRollup(gptRows), [gptRows])
+  const wellheadGasByMeterMonth = useMemo(() => {
+    const out = {}
+    const gptMeterKeys = new Set(
+      (gptRows || [])
+        .map(r => normalizeMeterKey(r?.meterName))
+        .filter(Boolean)
+    )
+    for (const row of volumeRows || []) {
+      if (!row?.monthKey) continue
+      if (row.grossGasVolume == null || !isFinite(row.grossGasVolume)) continue
+      const meterKey = normalizeMeterKey(row.meterTag)
+      // Only include historical wellhead gas that is explicitly tagged to a GPT meter.
+      if (!meterKey || !gptMeterKeys.has(meterKey)) continue
+      if (!out[meterKey]) out[meterKey] = {}
+      out[meterKey][row.monthKey] = (out[meterKey][row.monthKey] || 0) + Number(row.grossGasVolume)
+    }
+    return out
+  }, [volumeRows, gptRows])
+
+  const totalWellheadGasByMonth = useMemo(() => {
+    const out = {}
+    Object.values(wellheadGasByMeterMonth).forEach(byMonth => {
+      Object.entries(byMonth || {}).forEach(([monthKey, volume]) => {
+        out[monthKey] = (out[monthKey] || 0) + Number(volume || 0)
+      })
+    })
+    return out
+  }, [wellheadGasByMeterMonth])
+
+  const rollup = useMemo(
+    () => buildGptRollup(gptRows, {
+      wellheadGasByMeterMonth,
+      totalWellheadGasByMonth,
+    }),
+    [gptRows, wellheadGasByMeterMonth, totalWellheadGasByMonth]
+  )
 
   const displayRollup = useMemo(() => {
     const priceByMonth = Object.fromEntries(
@@ -438,7 +478,7 @@ export function GptTab({
         <div>
           <h2 className="text-lg font-bold text-gray-900">GPT Analysis</h2>
           <p className="text-xs text-gray-500 mt-1">
-            Midstream statement analytics by meter and month. This tab is currently analytical-only and does not feed LOS assumptions.
+            Midstream statement analytics by meter and month. Gas Shrink is derived from post-POP residue gas vs historical wellhead gas volumes.
           </p>
           {gptFilename && (
             <p className="text-xs text-gray-400 mt-1">Loaded file: {gptFilename}</p>
